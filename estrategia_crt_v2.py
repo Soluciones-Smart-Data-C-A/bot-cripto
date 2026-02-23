@@ -1,6 +1,6 @@
 """
 Script de Trading Automático - Estrategia CRT (Create-Range-Trade)
-Versión 5.0 - Soporte Multiusuario (Base de datos de suscriptores)
+Versión 5.1 - Soporte Multiusuario (Registro extendido de suscriptores)
 """
 
 import pandas as pd
@@ -25,25 +25,37 @@ BINANCE_USDT_ADDRESS = "0xb49a1a0447e6e90018611342156232d26509528a"
 USUARIOS_FILE = "usuarios.txt"
 
 def obtener_suscriptores():
-    """Lee los IDs de chat del archivo local."""
+    """Lee los IDs de chat del archivo local, ignorando metadatos adicionales."""
     if not os.path.exists(USUARIOS_FILE):
         return []
     try:
+        ids = []
         with open(USUARIOS_FILE, "r") as f:
-            return [line.strip() for line in f if line.strip()]
+            for line in f:
+                parts = line.strip().split(",")
+                if parts:
+                    ids.append(parts[0]) # El ID siempre es el primer elemento
+        return ids
     except Exception as e:
         print(f"❌ Error leyendo {USUARIOS_FILE}: {e}")
         return []
 
-def guardar_suscriptor(chat_id):
-    """Guarda un nuevo ID si no existe."""
+def guardar_suscriptor(chat_id, first_name="", last_name="", username=""):
+    """Guarda el ID y metadatos del usuario si no existe."""
     suscriptores = obtener_suscriptores()
     chat_id_str = str(chat_id)
+    
     if chat_id_str not in suscriptores:
         try:
+            # Limpiar posibles comas en los nombres para no romper el formato CSV
+            fn = str(first_name).replace(",", " ")
+            ln = str(last_name).replace(",", " ")
+            un = str(username).replace(",", " ")
+            
             with open(USUARIOS_FILE, "a") as f:
-                f.write(f"{chat_id_str}\n")
-            print(f"✅ Nuevo suscriptor registrado: {chat_id_str}")
+                f.write(f"{chat_id_str},{fn},{ln},{un}\n")
+            
+            print(f"✅ Nuevo suscriptor: {fn} (@{un}) ID: {chat_id_str}")
             return True
         except Exception as e:
             print(f"❌ Error guardando suscriptor: {e}")
@@ -70,10 +82,9 @@ def enviar_telegram(mensaje):
             print(f"❌ Error enviando a {chat_id}: {e}")
 
 def escuchador_mensajes():
-    """Hilo secundario para registrar nuevos usuarios que den /start."""
-    # Primero limpiamos actualizaciones antiguas para evitar bucles con mensajes pasados
+    """Hilo secundario para registrar nuevos usuarios con datos extendidos."""
     offset = -1
-    print("👂 Iniciando escuchador de mensajes...")
+    print("👂 Escuchador de mensajes activo (Capturando metadatos)...")
     
     while True:
         try:
@@ -82,21 +93,27 @@ def escuchador_mensajes():
             
             if "result" in response:
                 for update in response["result"]:
-                    # Actualizamos el offset para marcar el mensaje como leído
                     offset = update["update_id"] + 1
                     
-                    if "message" in update and "text" in update["message"]:
-                        chat_id = update["message"]["chat"]["id"]
-                        texto = update["message"].get("text", "")
+                    if "message" in update:
+                        msg_data = update["message"]
+                        user_data = msg_data.get("from", {})
+                        
+                        chat_id = msg_data["chat"]["id"]
+                        texto = msg_data.get("text", "")
+                        
+                        # Extraer información extendida
+                        first_name = user_data.get("first_name", "")
+                        last_name = user_data.get("last_name", "")
+                        username = user_data.get("username", "")
                         
                         if texto.startswith("/start"):
-                            if guardar_suscriptor(chat_id):
+                            if guardar_suscriptor(chat_id, first_name, last_name, username):
                                 bienvenida = (
-                                    "✅ *¡Suscripción Exitosa!*\n\n"
-                                    "Bienvenido a la Estrategia CRT. Recibirás señales de "
-                                    "BTC, EURUSD, GBPUSD y AUDUSD automáticamente."
+                                    f"✅ *¡Suscripción Exitosa!*\n\n"
+                                    f"Hola {first_name}, bienvenido a la Estrategia CRT. "
+                                    "Recibirás señales de BTC, EURUSD, GBPUSD y AUDUSD automáticamente."
                                 )
-                                # Enviar mensaje de confirmación solo al nuevo usuario
                                 try:
                                     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                                                   json={"chat_id": chat_id, "text": bienvenida, "parse_mode": "Markdown"}, 
@@ -104,12 +121,11 @@ def escuchador_mensajes():
                                 except:
                                     pass
         except Exception as e:
-            # En caso de error de red, esperamos un poco antes de reintentar
             time.sleep(5)
         time.sleep(1)
 
 # ==========================================
-# LÓGICA DE TRADING
+# LÓGICA DE TRADING (Sin cambios en estrategia)
 # ==========================================
 operaciones_activas = [] 
 notificado_fin_sesion = False
@@ -151,11 +167,8 @@ class EstrategiaCRT:
             return False
 
     def chequear_entrada(self):
-        if not self.bias_12h: 
-            return
-        
-        if any(op['simbolo'] == self.simbolo for op in operaciones_activas):
-            return
+        if not self.bias_12h: return
+        if any(op['simbolo'] == self.simbolo for op in operaciones_activas): return
 
         v1_1h, v2_1h = self.datos_1h.iloc[-2], self.datos_1h.iloc[-1]
         precio = float(v2_1h['Close'])
@@ -201,7 +214,6 @@ def realizar_seguimiento():
                        f"☕ *Apoyo:* `{BINANCE_USDT_ADDRESS}`")
                 enviar_telegram(msg)
                 operaciones_activas.remove(op)
-                
         except Exception as e:
             print(f"Error en seguimiento: {e}")
 
@@ -210,11 +222,10 @@ def ejecutar_bot():
     activos = ['EURUSD=X', 'GBPUSD=X', 'BTC-USD', 'AUDUSD=X']
     tz_ve = pytz.timezone('America/Caracas')
     
-    # Iniciar el escuchador de nuevos usuarios en paralelo
     threading.Thread(target=escuchador_mensajes, daemon=True).start()
 
     print("🤖 Bot iniciado. Verificando suscripciones...")
-    enviar_telegram("🤖 *Bot CRT v5.0 Activo*\nSistema multiusuario iniciado.")
+    enviar_telegram("🤖 *Bot CRT v5.1 Activo*\nSistema multiusuario con registro extendido iniciado.")
 
     while True:
         ahora_ve = datetime.now(tz_ve)
@@ -222,7 +233,6 @@ def ejecutar_bot():
 
         if 6 <= ahora_ve.hour < 12:
             notificado_fin_sesion = False
-            print(f"🔎 {ahora_ve.strftime('%H:%M:%S')} - Analizando Mercado...")
             for activo in activos:
                 bot = EstrategiaCRT(activo)
                 if bot.descargar_y_analizar():
@@ -233,12 +243,9 @@ def ejecutar_bot():
                 time.sleep(300)
             else:
                 if not notificado_fin_sesion:
-                    msg_fin = f"💤 *Sesión Finalizada ({ahora_ve.strftime('%H:%M')})*\nEntrando en modo ahorro hasta mañana."
-                    enviar_telegram(msg_fin)
+                    enviar_telegram(f"💤 *Sesión Finalizada ({ahora_ve.strftime('%H:%M')})*")
                     notificado_fin_sesion = True
-                
-                print(f"💤 {ahora_ve.strftime('%H:%M:%S')} - Hibernación activa.")
-                time.sleep(60) # Revisión cada minuto para ser más responsivo al /start
+                time.sleep(60)
 
 if __name__ == "__main__":
     ejecutar_bot()
