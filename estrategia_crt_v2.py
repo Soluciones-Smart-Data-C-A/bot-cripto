@@ -28,16 +28,25 @@ def obtener_suscriptores():
     """Lee los IDs de chat del archivo local."""
     if not os.path.exists(USUARIOS_FILE):
         return []
-    with open(USUARIOS_FILE, "r") as f:
-        return [line.strip() for line in f if line.strip()]
+    try:
+        with open(USUARIOS_FILE, "r") as f:
+            return [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"❌ Error leyendo {USUARIOS_FILE}: {e}")
+        return []
 
 def guardar_suscriptor(chat_id):
     """Guarda un nuevo ID si no existe."""
     suscriptores = obtener_suscriptores()
-    if str(chat_id) not in suscriptores:
-        with open(USUARIOS_FILE, "a") as f:
-            f.write(f"{chat_id}\n")
-        return True
+    chat_id_str = str(chat_id)
+    if chat_id_str not in suscriptores:
+        try:
+            with open(USUARIOS_FILE, "a") as f:
+                f.write(f"{chat_id_str}\n")
+            print(f"✅ Nuevo suscriptor registrado: {chat_id_str}")
+            return True
+        except Exception as e:
+            print(f"❌ Error guardando suscriptor: {e}")
     return False
 
 def enviar_telegram(mensaje):
@@ -62,36 +71,45 @@ def enviar_telegram(mensaje):
 
 def escuchador_mensajes():
     """Hilo secundario para registrar nuevos usuarios que den /start."""
-    offset = 0
-    print("👂 Escuchando nuevos suscriptores...")
+    # Primero limpiamos actualizaciones antiguas para evitar bucles con mensajes pasados
+    offset = -1
+    print("👂 Iniciando escuchador de mensajes...")
+    
     while True:
         try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={offset}"
-            response = requests.get(url, timeout=10).json()
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={offset}&timeout=30"
+            response = requests.get(url, timeout=35).json()
             
             if "result" in response:
                 for update in response["result"]:
-                    chat_id = update["message"]["chat"]["id"]
-                    texto = update["message"].get("text", "")
-                    
-                    if texto == "/start":
-                        if guardar_suscriptor(chat_id):
-                            bienvenida = (
-                                "✅ *¡Suscripción Exitosa!*\n\n"
-                                "Bienvenido a la Estrategia CRT. Recibirás señales de "
-                                "BTC, EURUSD, GBPUSD y AUDUSD automáticamente."
-                            )
-                            # Enviar solo al nuevo
-                            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                                          json={"chat_id": chat_id, "text": bienvenida, "parse_mode": "Markdown"})
-                    
+                    # Actualizamos el offset para marcar el mensaje como leído
                     offset = update["update_id"] + 1
+                    
+                    if "message" in update and "text" in update["message"]:
+                        chat_id = update["message"]["chat"]["id"]
+                        texto = update["message"].get("text", "")
+                        
+                        if texto.startswith("/start"):
+                            if guardar_suscriptor(chat_id):
+                                bienvenida = (
+                                    "✅ *¡Suscripción Exitosa!*\n\n"
+                                    "Bienvenido a la Estrategia CRT. Recibirás señales de "
+                                    "BTC, EURUSD, GBPUSD y AUDUSD automáticamente."
+                                )
+                                # Enviar mensaje de confirmación solo al nuevo usuario
+                                try:
+                                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                                                  json={"chat_id": chat_id, "text": bienvenida, "parse_mode": "Markdown"}, 
+                                                  timeout=10)
+                                except:
+                                    pass
         except Exception as e:
-            pass # Silencioso para no interrumpir consola
-        time.sleep(3)
+            # En caso de error de red, esperamos un poco antes de reintentar
+            time.sleep(5)
+        time.sleep(1)
 
 # ==========================================
-# LÓGICA DE TRADING (Mantenida de v4.5)
+# LÓGICA DE TRADING
 # ==========================================
 operaciones_activas = [] 
 notificado_fin_sesion = False
@@ -151,7 +169,7 @@ class EstrategiaCRT:
         elif self.bias_12h == 'VENTA' and v2_1h['High'] > v1_1h['High'] and v2_1h['Close'] < v1_1h['High']:
             nueva_op = {
                 'simbolo': self.simbolo, 'tipo': 'SHORT', 'entrada': precio,
-                'tp': self.objetivo_12h, 'sl': float(v2_1h['High']), 'estado': 'ABIERTA'
+                'tp': self.objetivo_12h, 'sl': float(v2_1h['Low']), 'estado': 'ABIERTA'
             }
         
         if nueva_op:
@@ -195,13 +213,13 @@ def ejecutar_bot():
     # Iniciar el escuchador de nuevos usuarios en paralelo
     threading.Thread(target=escuchador_mensajes, daemon=True).start()
 
+    print("🤖 Bot iniciado. Verificando suscripciones...")
     enviar_telegram("🤖 *Bot CRT v5.0 Activo*\nSistema multiusuario iniciado.")
 
     while True:
         ahora_ve = datetime.now(tz_ve)
         realizar_seguimiento()
 
-        # VENTANA OPERATIVA: 6:00 AM a 12:00 PM (Hora Venezuela)
         if 6 <= ahora_ve.hour < 12:
             notificado_fin_sesion = False
             print(f"🔎 {ahora_ve.strftime('%H:%M:%S')} - Analizando Mercado...")
@@ -219,8 +237,8 @@ def ejecutar_bot():
                     enviar_telegram(msg_fin)
                     notificado_fin_sesion = True
                 
-                print(f"💤 {ahora_ve.strftime('%H:%M:%S')} - Hibernación.")
-                time.sleep(600) # Reducido a 10 min para que no se congele tanto tiempo
+                print(f"💤 {ahora_ve.strftime('%H:%M:%S')} - Hibernación activa.")
+                time.sleep(60) # Revisión cada minuto para ser más responsivo al /start
 
 if __name__ == "__main__":
     ejecutar_bot()
