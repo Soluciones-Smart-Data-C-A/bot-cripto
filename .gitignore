@@ -1,0 +1,26 @@
+#Datos de usuario (Privacidad)
+
+usuarios.txt
+historial_trades.csv
+
+#Entornos virtuales
+
+venv/
+.env
+env/
+
+#Python
+
+pycache/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+#Datos y logs
+
+*.log
+.DS_Store
+
+#Docker (Opcional, si no quieres subir capas de build)
+
+.dockerignore
