@@ -272,22 +272,28 @@ def ejecutar_bot():
     activos = ['EURUSD=X', 'GBPUSD=X', 'BTC-USD', 'AUDUSD=X']
     tz_ve = pytz.timezone('America/Caracas')
     threading.Thread(target=escuchador_mensajes, daemon=True).start()
-    enviar_telegram("🤖 *Bot CRT v6.0 MySQL Activo*\nPersistencia de datos configurada.")
+    enviar_telegram("🤖 *Bot CRT v6.1 Activo*\nHorario: 5:00 AM - 5:00 PM VET.")
 
     while True:
         ahora_ve = datetime.now(tz_ve)
         realizar_seguimiento()
-        if 5 <= ahora_ve.hour < 12:
+        
+        # Horario extendido: de 5 AM (inclusive) a 5 PM (17:00 no inclusive)
+        if 5 <= ahora_ve.hour < 17:
             notificado_fin_sesion = False
             for activo in activos:
                 bot = EstrategiaCRT(activo)
                 if bot.descargar_y_analizar(): bot.chequear_entrada()
             time.sleep(300) 
         else:
-            if not operaciones_activas and not notificado_fin_sesion:
-                enviar_telegram(f"💤 *Hibernando* hasta las 5:00 AM.")
-                notificado_fin_sesion = True
-            time.sleep(60)
+            # Si hay operaciones abiertas fuera de horario, seguimos haciéndoles seguimiento
+            if operaciones_activas:
+                time.sleep(60)
+            else:
+                if not notificado_fin_sesion:
+                    enviar_telegram(f"💤 *Hibernando* hasta mañana a las 5:00 AM.")
+                    notificado_fin_sesion = True
+                time.sleep(60)
 
 if __name__ == "__main__":
     ejecutar_bot()
