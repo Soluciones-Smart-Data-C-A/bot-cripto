@@ -3,3 +3,5 @@ numpy
 yfinance
 pytz
 requests
+mysql-connector-python
+cryptography

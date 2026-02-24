@@ -1,6 +1,6 @@
 """
 Script de Trading Automático - Estrategia CRT (Create-Range-Trade)
-Versión 5.3 - Registro de eficiencia y marcas de tiempo en Telegram.
+Versión 6.0 - Persistencia en MySQL (Compatible con Coolify/Docker)
 """
 
 import pandas as pd
@@ -13,92 +13,147 @@ import requests
 import warnings
 import threading
 import os
-import csv
+import mysql.connector
+from mysql.connector import Error
 
 # Configuración de avisos
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# CONFIGURACIÓN DE ARCHIVOS Y NOTIFICACIONES
+# CONFIGURACIÓN DE BASE DE DATOS (MYSQL)
+# ==========================================
+DB_CONFIG = {
+    'host': os.getenv('DB_HOST', '45.22.208.171'),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', 'M4JpWsOEoXZI8YKzAWYZd2a6iLYfyva4AX1EEmFFlg7OyXenl885ej2SVeexnBjM'),
+    'database': os.getenv('DB_NAME', 'trades')
+}
+
+# ==========================================
+# CONFIGURACIÓN DE NOTIFICACIONES (TELEGRAM)
 # ==========================================
 TELEGRAM_TOKEN = "8327248294:AAGvexslS_stn3B-THAbmhqKHswJyCFnFK4"
 BINANCE_USDT_ADDRESS = "0xb49a1a0447e6e90018611342156232d26509528a"
-USUARIOS_FILE = "usuarios.txt"
-HISTORIAL_FILE = "historial_trades.csv"
 
-def inicializar_csv():
-    """Crea el encabezado del historial si no existe."""
-    if not os.path.exists(HISTORIAL_FILE):
-        with open(HISTORIAL_FILE, mode='w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Fecha_Apertura', 'Simbolo', 'Tipo', 'Entrada', 'TP', 'SL', 'Fecha_Cierre', 'Salida', 'Resultado', 'Pips_Profit'])
-
-def registrar_apertura_csv(op):
-    """Guarda el inicio de una operacion."""
+def get_db_connection():
+    """Establece conexión con MySQL."""
     try:
-        with open(HISTORIAL_FILE, mode='a', newline='') as f:
-            writer = csv.writer(f)
-            # Dejamos campos de cierre vacios temporalmente
-            writer.writerow([
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                op['simbolo'], op['tipo'], op['entrada'], op['tp'], op['sl'],
-                '', '', 'ABIERTA', ''
-            ])
-    except Exception as e:
-        print(f"❌ Error guardando apertura en CSV: {e}")
+        conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
+    except Error as e:
+        print(f"❌ Error conectando a MySQL: {e}")
+        return None
 
-def registrar_cierre_csv(simbolo, salida, resultado):
-    """Actualiza la ultima operacion abierta del simbolo con su resultado."""
+def inicializar_db():
+    """Crea las tablas necesarias si no existen."""
+    conn = get_db_connection()
+    if not conn: return
     try:
-        df = pd.read_csv(HISTORIAL_FILE)
-        # Buscar la ultima fila de ese simbolo que este 'ABIERTA'
-        mask = (df['Simbolo'] == simbolo) & (df['Resultado'] == 'ABIERTA')
-        if not df[mask].empty:
-            idx = df[mask].index[-1]
-            entrada = df.at[idx, 'Entrada']
-            tipo = df.at[idx, 'Tipo']
-            
-            # Calcular Pips/Puntos de profit
-            pips = (salida - entrada) if tipo == 'LONG' else (entrada - salida)
-            
-            df.at[idx, 'Fecha_Cierre'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            df.at[idx, 'Salida'] = salida
-            df.at[idx, 'Resultado'] = resultado
-            df.at[idx, 'Pips_Profit'] = round(pips, 5)
-            
-            df.to_csv(HISTORIAL_FILE, index=False)
-    except Exception as e:
-        print(f"❌ Error actualizando cierre en CSV: {e}")
+        cursor = conn.cursor()
+        # Tabla de Usuarios/Suscriptores
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                chat_id VARCHAR(50) PRIMARY KEY,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
+                username VARCHAR(100),
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Tabla de Historial de Trades
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historial_trades (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                fecha_apertura DATETIME,
+                simbolo VARCHAR(20),
+                tipo VARCHAR(10),
+                entrada FLOAT,
+                tp FLOAT,
+                sl FLOAT,
+                fecha_cierre DATETIME NULL,
+                salida FLOAT NULL,
+                resultado VARCHAR(20) DEFAULT 'ABIERTA',
+                pips_profit FLOAT NULL
+            )
+        """)
+        conn.commit()
+    except Error as e:
+        print(f"❌ Error inicializando tablas: {e}")
+    finally:
+        conn.close()
 
 def obtener_suscriptores():
-    if not os.path.exists(USUARIOS_FILE):
-        return []
-    try:
-        ids = []
-        with open(USUARIOS_FILE, "r") as f:
-            for line in f:
-                parts = line.strip().split(",")
-                if parts and parts[0]:
-                    ids.append(parts[0])
-        return ids
-    except Exception as e:
-        print(f"❌ Error leyendo {USUARIOS_FILE}: {e}")
-        return []
+    """Obtiene lista de IDs desde MySQL."""
+    conn = get_db_connection()
+    ids = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT chat_id FROM usuarios")
+            ids = [str(row[0]) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+    return ids
 
 def guardar_suscriptor(chat_id, first_name="", last_name="", username=""):
-    suscriptores = obtener_suscriptores()
-    chat_id_str = str(chat_id)
-    if chat_id_str not in suscriptores:
-        try:
-            fn = str(first_name).replace(",", " ")
-            ln = str(last_name).replace(",", " ")
-            un = str(username).replace(",", " ")
-            with open(USUARIOS_FILE, "a") as f:
-                f.write(f"{chat_id_str},{fn},{ln},{un}\n")
-            return True
-        except Exception as e:
-            print(f"❌ Error guardando suscriptor: {e}")
-    return False
+    """Guarda un nuevo suscriptor en MySQL."""
+    conn = get_db_connection()
+    if not conn: return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT IGNORE INTO usuarios (chat_id, first_name, last_name, username)
+            VALUES (%s, %s, %s, %s)
+        """, (str(chat_id), first_name, last_name, username))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def registrar_apertura_db(op):
+    """Registra la apertura de un trade en MySQL."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO historial_trades (fecha_apertura, simbolo, tipo, entrada, tp, sl)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            datetime.now(), op['simbolo'], op['tipo'], 
+            op['entrada'], op['tp'], op['sl']
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+
+def registrar_cierre_db(simbolo, salida, resultado):
+    """Actualiza el cierre del último trade abierto de un símbolo."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        # Obtener datos de la entrada para calcular pips
+        cursor.execute("""
+            SELECT id, entrada, tipo FROM historial_trades 
+            WHERE simbolo = %s AND resultado = 'ABIERTA' 
+            ORDER BY fecha_apertura DESC LIMIT 1
+        """, (simbolo,))
+        row = cursor.fetchone()
+        
+        if row:
+            trade_id, entrada, tipo = row
+            pips = (salida - entrada) if tipo == 'LONG' else (entrada - salida)
+            
+            cursor.execute("""
+                UPDATE historial_trades 
+                SET fecha_cierre = %s, salida = %s, resultado = %s, pips_profit = %s
+                WHERE id = %s
+            """, (datetime.now(), salida, resultado, round(pips, 5), trade_id))
+            conn.commit()
+    finally:
+        conn.close()
 
 def enviar_telegram(mensaje):
     ids = obtener_suscriptores()
@@ -129,8 +184,9 @@ def escuchador_mensajes():
                         texto = msg_data.get("text", "")
                         if texto.startswith("/start"):
                             if guardar_suscriptor(chat_id, user_data.get("first_name", ""), user_data.get("last_name", ""), user_data.get("username", "")):
-                                bienvenida = "✅ *Suscripción Exitosa!*"
-                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": bienvenida, "parse_mode": "Markdown"})
+                                bienvenida = "✅ *¡Suscripción Exitosa!*\nBienvenido a la Estrategia CRT."
+                                requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                                              json={"chat_id": chat_id, "text": bienvenida, "parse_mode": "Markdown"})
         except:
             time.sleep(5)
         time.sleep(1)
@@ -182,12 +238,9 @@ class EstrategiaCRT:
         
         if nueva_op:
             operaciones_activas.append(nueva_op)
-            registrar_apertura_csv(nueva_op)
+            registrar_apertura_db(nueva_op) # MySQL
             msg = (f"🚀 *SEÑAL {nueva_op['tipo']} ({nueva_op['simbolo']})*\n"
-                   f"💰 Entrada: {precio:.5f}\n"
-                   f"🎯 TP: {nueva_op['tp']:.5f}\n"
-                   f"🛑 SL: {nueva_op['sl']:.5f}\n"
-                   f"⏰ Hora: {ahora_str}")
+                   f"💰 Entrada: {precio:.5f}\n🎯 TP: {nueva_op['tp']:.5f}\n🛑 SL: {nueva_op['sl']:.5f}\n⏰ Hora: {ahora_str}")
             enviar_telegram(msg)
 
 def realizar_seguimiento():
@@ -198,7 +251,6 @@ def realizar_seguimiento():
             precio_actual = ticker.fast_info['last_price']
             ahora_str = datetime.now().strftime("%H:%M:%S")
             cerro, resultado = False, ""
-            
             if op['tipo'] == 'LONG':
                 if precio_actual >= op['tp']: cerro, resultado = True, "GANANCIA"
                 elif precio_actual <= op['sl']: cerro, resultado = True, "PERDIDA"
@@ -207,25 +259,20 @@ def realizar_seguimiento():
                 elif precio_actual >= op['sl']: cerro, resultado = True, "PERDIDA"
 
             if cerro:
-                registrar_cierre_csv(op['simbolo'], precio_actual, resultado)
+                registrar_cierre_db(op['simbolo'], precio_actual, resultado) # MySQL
                 emoji = "✅" if resultado == "GANANCIA" else "❌"
-                msg = (f"🏁 *OPERACIÓN CERRADA*\n"
-                       f"{emoji} {resultado}\n"
-                       f"📈 Par: {op['simbolo']}\n"
-                       f"💵 Salida: {precio_actual:.5f}\n"
-                       f"⏰ Hora: {ahora_str}")
-                enviar_telegram(msg)
+                enviar_telegram(f"🏁 *OPERACIÓN CERRADA*\n{emoji} {resultado}\n📈 Par: {op['simbolo']}\n💵 Salida: {precio_actual:.5f}\n⏰ Hora: {ahora_str}")
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"Error seguimiento: {e}")
 
 def ejecutar_bot():
     global notificado_fin_sesion
-    inicializar_csv()
+    inicializar_db()
     activos = ['EURUSD=X', 'GBPUSD=X', 'BTC-USD', 'AUDUSD=X']
     tz_ve = pytz.timezone('America/Caracas')
     threading.Thread(target=escuchador_mensajes, daemon=True).start()
-    enviar_telegram("🤖 *Bot CRT v5.3 Activo*\nRegistro de eficiencia habilitado.")
+    enviar_telegram("🤖 *Bot CRT v6.0 MySQL Activo*\nPersistencia de datos configurada.")
 
     while True:
         ahora_ve = datetime.now(tz_ve)
