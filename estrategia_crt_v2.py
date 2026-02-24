@@ -1,6 +1,6 @@
 """
 Script de Trading Automático - Estrategia CRT (Create-Range-Trade)
-Versión 5.3 - Registro de eficiencia y exportación a CSV para análisis.
+Versión 5.3 - Registro de eficiencia y marcas de tiempo en Telegram.
 """
 
 import pandas as pd
@@ -172,6 +172,8 @@ class EstrategiaCRT:
         if not self.bias_12h or any(op['simbolo'] == self.simbolo for op in operaciones_activas): return
         v1_1h, v2_1h = self.datos_1h.iloc[-2], self.datos_1h.iloc[-1]
         precio = float(v2_1h['Close'])
+        ahora_str = datetime.now().strftime("%H:%M:%S")
+        
         nueva_op = None
         if self.bias_12h == 'COMPRA' and v2_1h['Low'] < v1_1h['Low'] and v2_1h['Close'] > v1_1h['Low']:
             nueva_op = {'simbolo': self.simbolo, 'tipo': 'LONG', 'entrada': precio, 'tp': self.objetivo_12h, 'sl': float(v2_1h['Low'])}
@@ -180,8 +182,13 @@ class EstrategiaCRT:
         
         if nueva_op:
             operaciones_activas.append(nueva_op)
-            registrar_apertura_csv(nueva_op) # REGISTRO DE EFICIENCIA
-            enviar_telegram(f"🚀 *SEÑAL {nueva_op['tipo']} ({nueva_op['simbolo']})*\n💰 Entrada: {precio:.5f}\n🎯 TP: {nueva_op['tp']:.5f}\n🛑 SL: {nueva_op['sl']:.5f}")
+            registrar_apertura_csv(nueva_op)
+            msg = (f"🚀 *SEÑAL {nueva_op['tipo']} ({nueva_op['simbolo']})*\n"
+                   f"💰 Entrada: {precio:.5f}\n"
+                   f"🎯 TP: {nueva_op['tp']:.5f}\n"
+                   f"🛑 SL: {nueva_op['sl']:.5f}\n"
+                   f"⏰ Hora: {ahora_str}")
+            enviar_telegram(msg)
 
 def realizar_seguimiento():
     global operaciones_activas
@@ -189,7 +196,9 @@ def realizar_seguimiento():
         try:
             ticker = yf.Ticker(op['simbolo'])
             precio_actual = ticker.fast_info['last_price']
+            ahora_str = datetime.now().strftime("%H:%M:%S")
             cerro, resultado = False, ""
+            
             if op['tipo'] == 'LONG':
                 if precio_actual >= op['tp']: cerro, resultado = True, "GANANCIA"
                 elif precio_actual <= op['sl']: cerro, resultado = True, "PERDIDA"
@@ -198,9 +207,14 @@ def realizar_seguimiento():
                 elif precio_actual >= op['sl']: cerro, resultado = True, "PERDIDA"
 
             if cerro:
-                registrar_cierre_csv(op['simbolo'], precio_actual, resultado) # ACTUALIZAR EFICIENCIA
+                registrar_cierre_csv(op['simbolo'], precio_actual, resultado)
                 emoji = "✅" if resultado == "GANANCIA" else "❌"
-                enviar_telegram(f"🏁 *OPERACIÓN CERRADA*\n{emoji} {resultado}\n📈 Par: {op['simbolo']}\n💵 Salida: {precio_actual:.5f}")
+                msg = (f"🏁 *OPERACIÓN CERRADA*\n"
+                       f"{emoji} {resultado}\n"
+                       f"📈 Par: {op['simbolo']}\n"
+                       f"💵 Salida: {precio_actual:.5f}\n"
+                       f"⏰ Hora: {ahora_str}")
+                enviar_telegram(msg)
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"Error seguimiento: {e}")
