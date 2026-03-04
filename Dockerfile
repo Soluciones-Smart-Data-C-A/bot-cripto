@@ -24,4 +24,4 @@ COPY estrategia_crt_v2.py .
 COPY usuarios.txt .
 
 # Ejecutar
-CMD ["python", "estrategia_crt_v2.py"]
+CMD python estrategia_crt_v2.py & python bot_mora_trader.py

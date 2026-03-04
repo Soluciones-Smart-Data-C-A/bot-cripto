@@ -1,6 +1,6 @@
 """
 Script de Trading Automático - Estrategia CRT (Create-Range-Trade)
-Versión 6.7 - Almacenamiento de Rango 12H (High/Low) en DB.
+Versión 6.8 - Bias dinámico basado en velas de 1H tras cierre de 12H (5 AM NY).
 """
 
 import pandas as pd
@@ -33,10 +33,8 @@ DB_CONFIG = {
 # CONFIGURACIÓN DE NOTIFICACIONES (TELEGRAM)
 # ==========================================
 TELEGRAM_TOKEN = "8327248294:AAGvexslS_stn3B-THAbmhqKHswJyCFnFK4"
-BINANCE_USDT_ADDRESS = "0xb49a1a0447e6e90018611342156232d26509528a"
 
 def get_db_connection():
-    """Establece conexión con MySQL."""
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn
@@ -45,12 +43,10 @@ def get_db_connection():
         return None
 
 def inicializar_db():
-    """Crea las tablas necesarias si no existen."""
     conn = get_db_connection()
     if not conn: return
     try:
         cursor = conn.cursor()
-        # Tabla de Usuarios
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 chat_id VARCHAR(50) PRIMARY KEY,
@@ -60,7 +56,6 @@ def inicializar_db():
                 fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # Tabla de Historial (Incluye Rango de 12H)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS historial_trades (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -97,22 +92,7 @@ def obtener_suscriptores():
             conn.close()
     return ids
 
-def guardar_suscriptor(chat_id, first_name="", last_name="", username=""):
-    conn = get_db_connection()
-    if not conn: return False
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT IGNORE INTO usuarios (chat_id, first_name, last_name, username)
-            VALUES (%s, %s, %s, %s)
-        """, (str(chat_id), first_name, last_name, username))
-        conn.commit()
-        return cursor.rowcount > 0
-    finally:
-        conn.close()
-
 def registrar_apertura_db(op):
-    """Registra apertura guardando el rango de 12H analizado."""
     conn = get_db_connection()
     if not conn: return
     try:
@@ -162,23 +142,8 @@ def enviar_telegram(mensaje):
         try: requests.post(url, json={"chat_id": chat_id, "text": mensaje, "parse_mode": "Markdown"}, timeout=10)
         except: pass
 
-def escuchador_mensajes():
-    offset = -1
-    while True:
-        try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates?offset={offset}&timeout=30"
-            response = requests.get(url, timeout=35).json()
-            if "result" in response:
-                for update in response["result"]:
-                    offset = update["update_id"] + 1
-                    if "message" in update:
-                        msg = update["message"]
-                        if msg.get("text", "").startswith("/start"):
-                            guardar_suscriptor(msg["chat"]["id"], msg["from"].get("first_name"), msg["from"].get("last_name"), msg["from"].get("username"))
-        except: time.sleep(5)
-
 # ==========================================
-# LÓGICA DE TRADING
+# LÓGICA DE TRADING MEJORADA
 # ==========================================
 operaciones_activas = []
 notificado_fin_sesion = False
@@ -188,84 +153,83 @@ class EstrategiaCRT:
     def __init__(self, simbolo):
         self.simbolo = simbolo
         self.tz_ny = pytz.timezone('America/New_York')
-        # Recuperamos datos de memoria si existen
-        mem = bias_memoria.get(simbolo, {})
-        self.bias_12h = mem.get('bias')
-        self.objetivo_12h = mem.get('tp')
-        self.rango_high = mem.get('r_high')
-        self.rango_low = mem.get('r_low')
         self.datos_1h = None
+        self.rango_high = None
+        self.rango_low = None
 
     def descargar_y_analizar(self):
+        """
+        Obtiene el rango de la vela de 12H que cerró a las 5 AM NY.
+        No espera el cierre de la vela actual.
+        """
         try:
-            df = yf.download(self.simbolo, period='10d', interval='1h', progress=False, auto_adjust=True)
+            df = yf.download(self.simbolo, period='5d', interval='1h', progress=False, auto_adjust=True)
             if df.empty: return False
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             df.index = df.index.tz_convert(self.tz_ny)
             self.datos_1h = df
             
-            # Vela de 12H (Offset 5h para alinear con 5 AM NY)
-            df_12h = df.resample('12h', offset='5h').agg({'Open':'first', 'High':'max', 'Low':'min', 'Close':'last'}).dropna()
-            if len(df_12h) < 2: return False
+            # Obtenemos velas de 12H cerradas (offset 5h alinea con 5am/5pm NY)
+            df_12h = df.resample('12h', offset='5h').agg({
+                'High':'max', 'Low':'min', 'Close':'last'
+            }).dropna()
             
-            v1, v2 = df_12h.iloc[-2], df_12h.iloc[-1]
+            if len(df_12h) < 1: return False
             
-            # Guardamos los límites del rango de 12H (Paso 1: Create)
-            self.rango_high = float(v1['High'])
-            self.rango_low = float(v1['Low'])
+            # v_referencia es la vela que TERMINÓ a las 5 AM NY
+            v_referencia = df_12h.iloc[-1]
+            self.rango_high = float(v_referencia['High'])
+            self.rango_low = float(v_referencia['Low'])
             
-            nuevo_bias = None
-            nuevo_tp = None
-            
-            # Paso 2: Range (Manipulación)
-            if v2['Low'] < self.rango_low and v2['Close'] > self.rango_low:
-                nuevo_bias, nuevo_tp = 'COMPRA', self.rango_high
-            elif v2['High'] > self.rango_high and v2['Close'] < self.rango_high:
-                nuevo_bias, nuevo_tp = 'VENTA', self.rango_low
-            
-            if nuevo_bias:
-                bias_memoria[self.simbolo] = {
-                    'bias': nuevo_bias, 'tp': nuevo_tp, 
-                    'r_high': self.rango_high, 'r_low': self.rango_low
-                }
-                self.bias_12h = nuevo_bias
-                self.objetivo_12h = nuevo_tp
-                
             return True
         except Exception as e:
             print(f"Error {self.simbolo}: {e}")
             return False
 
     def chequear_entrada(self):
-        if not self.bias_12h or any(op['simbolo'] == self.simbolo for op in operaciones_activas): return
+        """
+        Busca manipulación en las velas de 1H respecto al rango de 12H previo.
+        """
+        if any(op['simbolo'] == self.simbolo for op in operaciones_activas): return
         
-        v1_1h, v2_1h = self.datos_1h.iloc[-2], self.datos_1h.iloc[-1]
-        precio = float(v2_1h['Close'])
+        # Analizamos las últimas 2 velas de 1 hora para detectar el reingreso (Paso 2 y 3)
+        v_previa_1h = self.datos_1h.iloc[-2]
+        v_actual_1h = self.datos_1h.iloc[-1]
         
+        precio_actual = float(v_actual_1h['Close'])
+        bias_detectado = None
         nueva_op = None
-        # Paso 3: Trade (Confirmación en 1H)
-        if self.bias_12h == 'COMPRA' and v2_1h['Low'] < v1_1h['Low'] and v2_1h['Close'] > v1_1h['Low']:
+
+        # LÓGICA DE COMPRA (LONG):
+        # 1. La vela de 1H (o la anterior) bajó del Rango Low de 12H (Manipulación)
+        # 2. El precio actual de 1H cerró por encima del Rango Low de 12H (Reingreso)
+        if v_actual_1h['Low'] < self.rango_low and v_actual_1h['Close'] > self.rango_low:
+            bias_detectado = 'COMPRA'
             nueva_op = {
-                'simbolo': self.simbolo, 'tipo': 'LONG', 'bias_12h': self.bias_12h,
+                'simbolo': self.simbolo, 'tipo': 'LONG', 'bias_12h': bias_detectado,
                 'r_high': self.rango_high, 'r_low': self.rango_low,
-                'entrada': precio, 'tp': self.objetivo_12h, 'sl': float(v2_1h['Low'])
+                'entrada': precio_actual, 'tp': self.rango_high, 'sl': float(v_actual_1h['Low'])
             }
-        elif self.bias_12h == 'VENTA' and v2_1h['High'] > v1_1h['High'] and v2_1h['Close'] < v1_1h['High']:
+
+        # LÓGICA DE VENTA (SHORT):
+        # 1. La vela de 1H (o la anterior) subió del Rango High de 12H (Manipulación)
+        # 2. El precio actual de 1H cerró por debajo del Rango High de 12H (Reingreso)
+        elif v_actual_1h['High'] > self.rango_high and v_actual_1h['Close'] < self.rango_high:
+            bias_detectado = 'VENTA'
             nueva_op = {
-                'simbolo': self.simbolo, 'tipo': 'SHORT', 'bias_12h': self.bias_12h,
+                'simbolo': self.simbolo, 'tipo': 'SHORT', 'bias_12h': bias_detectado,
                 'r_high': self.rango_high, 'r_low': self.rango_low,
-                'entrada': precio, 'tp': self.objetivo_12h, 'sl': float(v2_1h['High'])
+                'entrada': precio_actual, 'tp': self.rango_low, 'sl': float(v_actual_1h['High'])
             }
-        
+
         if nueva_op:
             operaciones_activas.append(nueva_op)
             registrar_apertura_db(nueva_op)
-            msg = (f"🚀 *SEÑAL CRT ({nueva_op['simbolo']})*\n"
-                   f"📊 Rango 12H: {self.rango_low:.5f} - {self.rango_high:.5f}\n"
-                   f"🧠 Bias: {self.bias_12h}\n"
-                   f"💰 Entrada: {precio:.5f}\n🎯 TP: {nueva_op['tp']:.5f}\n🛑 SL: {nueva_op['sl']:.5f}")
+            msg = (f"🚀 *SEÑAL CRT DETECTADA ({nueva_op['simbolo']})*\n"
+                   f"📊 Rango Ref (5 AM): {self.rango_low:.5f} - {self.rango_high:.5f}\n"
+                   f"🧠 Bias Confirmado en 1H: {bias_detectado}\n"
+                   f"💰 Entrada: {precio_actual:.5f}\n🎯 TP: {nueva_op['tp']:.5f}\n🛑 SL: {nueva_op['sl']:.5f}")
             enviar_telegram(msg)
-            bias_memoria.pop(self.simbolo, None)
 
 def realizar_seguimiento():
     global operaciones_activas
@@ -290,23 +254,24 @@ def realizar_seguimiento():
 def ejecutar_bot():
     global notificado_fin_sesion
     inicializar_db()
-    activos = ['EURUSD=X', 'GBPUSD=X', 'BTC-USD', 'AUDUSD=X']
+    activos = ['EURUSD=X', 'BTC-USD', 'SOL-USD']
     tz_ve = pytz.timezone('America/Caracas')
-    threading.Thread(target=escuchador_mensajes, daemon=True).start()
-    enviar_telegram("🤖 *Bot CRT v6.7 Activo*\nRegistro de rangos 12H habilitado.")
+    enviar_telegram("🤖 *Bot CRT v6.8 Activo*\nAnalizando manipulación en 1H tras rango de 5 AM NY.")
 
     while True:
         ahora_ve = datetime.now(tz_ve)
         realizar_seguimiento()
-        if 5 <= ahora_ve.hour < 17:
+        # Escaneamos desde las 6 AM hasta las 4 PM para aprovechar la sesión de NY
+        if 6 <= ahora_ve.hour < 16:
             notificado_fin_sesion = False
             for activo in activos:
                 bot = EstrategiaCRT(activo)
-                if bot.descargar_y_analizar(): bot.chequear_entrada()
+                if bot.descargar_y_analizar(): 
+                    bot.chequear_entrada()
             time.sleep(300) 
         else:
             if not operaciones_activas and not notificado_fin_sesion:
-                enviar_telegram("💤 *Hibernando* hasta mañana.")
+                enviar_telegram("💤 *Sesión Finalizada.* Hibernando hasta mañana.")
                 notificado_fin_sesion = True
             time.sleep(60)
 
