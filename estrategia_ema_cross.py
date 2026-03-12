@@ -1,7 +1,6 @@
 """
 Script de Trading Automático - Estrategia Cruce de EMAs (9 y 21)
-Basado en: https://www.youtube.com/shorts/roEy8Da2R1A
-Versión 1.0 - Scalping de tendencia rápida.
+Versión 1.4 - Soporte para Argumentos de Terminal (Local/Producción)
 """
 
 import pandas as pd
@@ -13,38 +12,64 @@ import time
 import requests
 import warnings
 import os
+import sys
 import mysql.connector
 from mysql.connector import Error
 
-# Configuración de avisos
+# ==========================================
+# GESTIÓN DE ARGUMENTOS Y VARIABLES DE ENTORNO
+# ==========================================
+try:
+    from dotenv import load_dotenv
+    # Capturar argumento: python estrategia_ema_cross.py local/produccion
+    argumento = sys.argv[1].lower() if len(sys.argv) > 1 else None
+
+    if argumento == 'local':
+        print("🏠 EMA Modo: LOCAL (Cargando .env_local)")
+        load_dotenv('.env_local')
+    elif argumento == 'produccion':
+        print("🌐 EMA Modo: PRODUCCIÓN (Cargando .env)")
+        load_dotenv('.env')
+    else:
+        # Detección automática por existencia de archivo si no hay argumento
+        if os.path.exists('.env_local'):
+            print("🤖 EMA Modo Auto: Local detectado (.env_local)")
+            load_dotenv('.env_local')
+        else:
+            print("🤖 EMA Modo Auto: Producción detectado (.env)")
+            load_dotenv('.env')
+except ImportError:
+    print("⚠️ Librería python-dotenv no instalada. Usando variables de entorno del sistema.")
+
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# CONFIGURACIÓN DE BASE DE DATOS (MYSQL)
+# CONFIGURACIÓN (Desde archivos .env)
 # ==========================================
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', '45.22.208.171'),
     'user': os.getenv('DB_USER', 'root'),
     'password': os.getenv('DB_PASSWORD', 'M4JpWsOEoXZI8YKzAWYZd2a6iLYfyva4AX1EEmFFlg7OyXenl885ej2SVeexnBjM'),
-    'database': os.getenv('DB_NAME', 'trades')
+    'database': os.getenv('DB_NAME', 'trades'),
+    'port': int(os.getenv('DB_PORT', 3306))
 }
 
-TELEGRAM_TOKEN = "8327248294:AAGvexslS_stn3B-THAbmhqKHswJyCFnFK4"
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 
 def get_db_connection():
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
+        conn = mysql.connector.connect(**DB_CONFIG, connect_timeout=5)
         return conn
     except Error as e:
-        print(f"❌ Error DB: {e}")
+        print(f"❌ Error DB EMA Cross: {e}")
         return None
 
 def inicializar_db():
-    """Crea la tabla específica para la estrategia de Cruce de EMAs."""
     conn = get_db_connection()
     if not conn: return
     try:
         cursor = conn.cursor()
+        # Tabla específica para esta estrategia
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS historial_ema_cross (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -61,92 +86,128 @@ def inicializar_db():
         """)
         conn.commit()
     except Error as e:
-        print(f"❌ Error inicializando tablas: {e}")
+        print(f"❌ Error inicializando tablas EMA: {e}")
     finally:
         conn.close()
 
-def registrar_apertura_ema(simbolo, tipo, entrada, e9, e21):
+def obtener_suscriptores():
     conn = get_db_connection()
-    if not conn: return
-    try:
-        cursor = conn.cursor()
-        query = "INSERT INTO historial_ema_cross (fecha_apertura, simbolo, tipo, precio_entrada, ema_9, ema_21) VALUES (%s, %s, %s, %s, %s, %s)"
-        cursor.execute(query, (datetime.now(), simbolo, tipo, entrada, e9, e21))
-        conn.commit()
-    finally:
-        conn.close()
-
-def registrar_cierre_ema(simbolo, salida, resultado):
-    conn = get_db_connection()
-    if not conn: return
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE historial_ema_cross SET fecha_cierre=%s, precio_salida=%s, resultado=%s WHERE simbolo=%s AND resultado='ABIERTA'", 
-                       (datetime.now(), salida, resultado, simbolo))
-        conn.commit()
-    finally:
-        conn.close()
+    ids = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT chat_id FROM usuarios")
+            ids = [str(row[0]) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+    return ids
 
 def enviar_telegram(mensaje):
+    ids = obtener_suscriptores()
+    if not ids or not TELEGRAM_TOKEN: 
+        print(f"📢 [EMA MSG]: {mensaje}")
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    # Nota: Aquí deberías obtener los chat_ids de tu tabla usuarios como en los otros bots
-    print(f"📢 [Telegram Simulation]: {mensaje}")
+    for chat_id in ids:
+        try:
+            requests.post(url, json={"chat_id": chat_id, "text": mensaje, "parse_mode": "Markdown"}, timeout=5)
+        except Exception as e:
+            print(f"⚠️ Error enviando Telegram: {e}")
 
-# ==========================================
-# LÓGICA DE CRUCE DE EMAS
-# ==========================================
+def registrar_apertura_ema(simbolo, tipo, precio, e9, e21):
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO historial_ema_cross (fecha_apertura, simbolo, tipo, precio_entrada, ema_9, ema_21)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (datetime.now(), simbolo, tipo, precio, e9, e21))
+        conn.commit()
+    finally:
+        conn.close()
+
+def registrar_cierre_ema(simbolo, precio_salida, resultado):
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE historial_ema_cross 
+            SET fecha_cierre = %s, precio_salida = %s, resultado = %s
+            WHERE simbolo = %s AND resultado = 'ABIERTA'
+            ORDER BY fecha_apertura DESC LIMIT 1
+        """, (datetime.now(), precio_salida, resultado, simbolo))
+        conn.commit()
+    finally:
+        conn.close()
+
+# Estado de operaciones en memoria
 operaciones_activas = {}
 
-def calcular_emas(df):
-    df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
-    df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
-    return df
+def analizar_cruce(simbolo):
+    try:
+        df = yf.download(simbolo, period='2d', interval='15m', progress=False, auto_adjust=True)
+        if df.empty: return
 
-def ejecutar_estrategia():
+        # Manejo de MultiIndex si es necesario
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+
+        # Calcular EMAs
+        df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
+        df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
+
+        ult = df.iloc[-1]
+        pen = df.iloc[-2]
+        
+        precio_actual = float(ult['Close'])
+        e9_ult, e21_ult = float(ult['EMA9']), float(ult['EMA21'])
+        e9_pen, e21_pen = float(pen['EMA9']), float(pen['EMA21'])
+
+        # Lógica de Cruce
+        # COMPRA: EMA9 cruza hacia arriba EMA21
+        if e9_pen <= e21_pen and e9_ult > e21_ult:
+            if simbolo not in operaciones_activas:
+                operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual}
+                registrar_apertura_ema(simbolo, 'LONG', precio_actual, e9_ult, e21_ult)
+                enviar_telegram(f"📈 *CRUCE ALCISTA EMA 9/21*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}")
+
+        # VENTA: EMA9 cruza hacia abajo EMA21
+        elif e9_pen >= e21_pen and e9_ult < e21_ult:
+            if simbolo not in operaciones_activas:
+                operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual}
+                registrar_apertura_ema(simbolo, 'SHORT', precio_actual, e9_ult, e21_ult)
+                enviar_telegram(f"📉 *CRUCE BAJISTA EMA 9/21*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}")
+
+        # Lógica de Cierre por Cruce Contrario
+        if simbolo in operaciones_activas:
+            op = operaciones_activas[simbolo]
+            if (op['tipo'] == 'LONG' and e9_ult < e21_ult) or \
+               (op['tipo'] == 'SHORT' and e9_ult > e21_ult):
+                registrar_cierre_ema(simbolo, precio_actual, "CRUCE CONTRARIO")
+                enviar_telegram(f"🏁 *CIERRE POR CRUCE* ({simbolo})\nPrecio: {precio_actual:.5f}")
+                del operaciones_activas[simbolo]
+
+    except Exception as e:
+        print(f"⚠️ Error analizando {simbolo}: {e}")
+
+def ejecutar_bot():
     inicializar_db()
-    activos = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'EURUSD=X']
-    print("🚀 Bot Cruce EMA 9/21 iniciando...")
+    activos = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'EURUSD=X', 'GBPUSD=X']
+    enviar_telegram(f"🚀 *Bot EMA Cross v1.4 Activo*\nAmbiente: {os.getenv('APP_ENV', 'producción')}")
 
     while True:
-        for simbolo in activos:
-            try:
-                # Datos de 5 minutos para scalping
-                df = yf.download(simbolo, period='1d', interval='5m', progress=False)
-                if len(df) < 22: continue
-                
-                df = calcular_emas(df)
-                ultima = df.iloc[-1]
-                penultima = df.iloc[-2]
-                
-                precio_actual = float(ultima['Close'])
-                
-                # CONDICIÓN DE COMPRA (Cruce hacia arriba)
-                if penultima['EMA9'] <= penultima['EMA21'] and ultima['EMA9'] > ultima['EMA21']:
-                    if simbolo not in operaciones_activas:
-                        operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual}
-                        registrar_apertura_ema(simbolo, 'LONG', precio_actual, ultima['EMA9'], ultima['EMA21'])
-                        enviar_telegram(f"📈 *CRUCE ALCISTA EMA 9/21*\nPar: {simbolo}\nPrecio: {precio_actual}")
-
-                # CONDICIÓN DE VENTA (Cruce hacia abajo)
-                elif penultima['EMA9'] >= penultima['EMA21'] and ultima['EMA9'] < ultima['EMA21']:
-                    if simbolo not in operaciones_activas:
-                        operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual}
-                        registrar_apertura_ema(simbolo, 'SHORT', precio_actual, ultima['EMA9'], ultima['EMA21'])
-                        enviar_telegram(f"📉 *CRUCE BAJISTA EMA 9/21*\nPar: {simbolo}\nPrecio: {precio_actual}")
-
-                # CIERRE DE OPERACIONES (Cruce contrario)
-                if simbolo in operaciones_activas:
-                    op = operaciones_activas[simbolo]
-                    if (op['tipo'] == 'LONG' and ultima['EMA9'] < ultima['EMA21']) or \
-                       (op['tipo'] == 'SHORT' and ultima['EMA9'] > ultima['EMA21']):
-                        registrar_cierre_ema(simbolo, precio_actual, "CRUCE CONTRARIO")
-                        enviar_telegram(f"🏁 *CIERRE POR CRUCE*\nPar: {simbolo}\nPrecio: {precio_actual}")
-                        del operaciones_activas[simbolo]
-
-            except Exception as e:
-                print(f"Error en {simbolo}: {e}")
+        for activo in activos:
+            analizar_cruce(activo)
+            time.sleep(2) # Evitar rate limit de API
         
-        time.sleep(300) # Esperar 5 minutos para la siguiente vela
+        # Esperar 5 minutos para la próxima vela de 15m (o según el intervalo deseado)
+        time.sleep(300)
 
 if __name__ == "__main__":
-    ejecutar_estrategia()
+    if not TELEGRAM_TOKEN:
+        print("❌ ERROR: TELEGRAM_TOKEN no encontrado en el entorno.")
+    else:
+        ejecutar_bot()

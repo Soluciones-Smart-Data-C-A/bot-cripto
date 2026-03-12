@@ -5,3 +5,4 @@ pytz
 requests
 mysql-connector-python
 cryptography
+python-dotenv
