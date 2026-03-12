@@ -2,7 +2,7 @@
 FROM python:3.10-slim
 
 # Directorio de trabajo
-# WORKDIR /app
+WORKDIR /app
 
 # Configuración de entorno
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -18,10 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# # Copiar el script
-# COPY estrategia_crt_v2.py .
-
-# COPY usuarios.txt .
+# Copiar el script
+COPY estrategia_crt_v2.py .
+COPY bot_mora_trader.py .
+COPY estrategia_ema_cross.py .
 
 # Ejecutar
 CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py
