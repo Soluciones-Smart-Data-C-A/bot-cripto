@@ -1,13 +1,5 @@
-#Datos de usuario (Privacidad)
-
-usuarios.txt
-historial_trades.csv
-
 #Entornos virtuales
-
-venv/
 .env
-env/
 .env_local
 
 #Python
