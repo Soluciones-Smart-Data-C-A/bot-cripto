@@ -2,7 +2,7 @@
 FROM python:3.10-slim
 
 # Directorio de trabajo
-WORKDIR /app
+# WORKDIR /app
 
 # Configuración de entorno
 ENV PYTHONDONTWRITEBYTECODE=1
