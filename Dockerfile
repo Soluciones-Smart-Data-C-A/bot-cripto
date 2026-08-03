@@ -18,7 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el script
+# Copiar los scripts
+COPY common.py .
 COPY estrategia_crt_v2.py .
 COPY bot_mora_trader.py .
 COPY estrategia_ema_cross.py .

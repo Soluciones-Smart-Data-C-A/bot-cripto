@@ -1,0 +1,35 @@
+============================================
+CONFIGURACIÓN BOT TELEGRAM (@jccampo_bot)
+Aplicar con @BotFather
+============================================
+
+1) /setname
+   Seleccionar: @jccampo_bot
+   Nombre:
+CRT trading bot
+
+2) /setabouttext
+   Seleccionar: @jccampo_bot
+   About:
+📈 CRT Trading Bot: Estrategia de alta precisión. Liquidez 12H y entradas 1H en sesión NY. 🎯 BTC, EURUSD, GBPUSD, AUDUSD.
+
+   (Versión corta alternativa si BotFather rechaza la anterior):
+📈 CRT Bot: Liquidez 12H, entradas 1H NY. 🎯 BTC, EURUSD, GBPUSD, AUDUSD
+
+3) /setdescription
+   Seleccionar: @jccampo_bot
+   Descripción:
+🤖 Bienvenido a Estrategia CRT (Create-Range-Trade)
+
+Este bot analiza la liquidez macro y micro para identificar puntos de entrada óptimos en el mercado.
+
+✅ Análisis: Sesión New York (NY).
+✅ Estrategia: Liquidez 12H y entradas en 1H.
+✅ Gestión: TP/SL automáticos.
+🎯 Activos: BTC, EURUSD, GBPUSD, AUDUSD.
+
+☕ Apoya el proyecto:
+Si el bot te ayuda en tu operativa, puedes colaborar aquí:
+
+🟡 Red: BNB Smart Chain (BEP20)
+💳 Billetera: 0x538e1ABDb2E0eb5503a20CFEa834248bb47171A7
