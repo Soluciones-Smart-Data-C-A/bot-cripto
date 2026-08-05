@@ -20,6 +20,12 @@ warnings.filterwarnings('ignore')
 ESTRATEGIA = 'CRT_V7'
 operaciones_activas = []
 
+def descargar(simbolo, periodo, intervalo):
+    df = yf.download(simbolo, period=periodo, interval=intervalo, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
+
 # ==========================================
 # CLASE DE LA ESTRATEGIA
 # ==========================================
@@ -37,19 +43,19 @@ class EstrategiaCRT:
         """
         try:
             # Descargar 1H para el Bias
-            h1 = yf.download(self.simbolo, period='5d', interval='1h', progress=False)
+            h1 = descargar(self.simbolo, '5d', '1h')
             if h1.empty:
                 return False
 
             # Bias simple: Si el cierre actual > media de 20 periodos en 1H
-            ma20 = h1['Close'].rolling(20).mean().iloc[-1]
-            self.bias = 'BULL' if h1['Close'].iloc[-1] > ma20 else 'BEAR'
+            ma20 = float(h1['Close'].rolling(20).mean().iloc[-1])
+            self.bias = 'BULL' if float(h1['Close'].iloc[-1]) > ma20 else 'BEAR'
 
             # Rango de Sesión (00:00 - 05:00 NY)
             # Aproximación: High/Low de las últimas velas previas
             session_data = h1.iloc[-10:-5]
-            self.rango_alto = session_data['High'].max()
-            self.rango_bajo = session_data['Low'].min()
+            self.rango_alto = float(session_data['High'].max())
+            self.rango_bajo = float(session_data['Low'].min())
 
             return True
         except Exception as e:
@@ -60,11 +66,11 @@ class EstrategiaCRT:
         """
         'TRADE': Espera que el precio rompa el rango para sacar liquidez y luego regrese.
         """
-        df_m5 = yf.download(self.simbolo, period='1d', interval='5m', progress=False)
+        df_m5 = descargar(self.simbolo, '1d', '5m')
         if df_m5.empty:
             return None
 
-        precio_actual = df_m5['Close'].iloc[-1]
+        precio_actual = float(df_m5['Close'].iloc[-1])
 
         if self.bias == 'BULL':
             # Manipula el BAJO del rango para comprar
@@ -90,7 +96,7 @@ def chequear_entradas():
         if bot.establecer_rango_y_bias():
             signal = bot.analizar_manipulacion()
             if signal:
-                p_entrada = yf.download(activo, period='1d', interval='1m', progress=False)['Close'].iloc[-1]
+                p_entrada = float(descargar(activo, '1d', '1m')['Close'].iloc[-1])
 
                 # Gestión de Riesgo (SL fijo de 0.2%, TP de 0.4% -> ratio 1:2)
                 sl = p_entrada * (0.998 if signal == 'LONG' else 1.002)
@@ -117,10 +123,10 @@ def chequear_entradas():
 def gestionar_operaciones():
     for op in operaciones_activas[:]:
         try:
-            df = yf.download(op['simbolo'], period='1d', interval='1m', progress=False)
+            df = descargar(op['simbolo'], '1d', '1m')
             if df.empty:
                 continue
-            p_actual = df['Close'].iloc[-1]
+            p_actual = float(df['Close'].iloc[-1])
 
             cerrar = False
             msg = ""
