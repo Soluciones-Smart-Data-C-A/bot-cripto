@@ -19,6 +19,7 @@ warnings.filterwarnings('ignore')
 
 ESTRATEGIA = 'CRT_V7'
 operaciones_activas = []
+bias_actual = {}
 
 def descargar(simbolo, periodo, intervalo):
     df = yf.download(simbolo, period=periodo, interval=intervalo, progress=False)
@@ -94,6 +95,7 @@ def chequear_entradas():
 
         bot = EstrategiaCRT(activo)
         if bot.establecer_rango_y_bias():
+            bias_actual[activo] = bot.bias
             signal = bot.analizar_manipulacion()
             if signal:
                 p_entrada = float(descargar(activo, '1d', '1m')['Close'].iloc[-1])
@@ -159,6 +161,11 @@ def ejecutar_bot():
     while True:
         chequear_entradas()
         gestionar_operaciones()
+
+        estado_bias = ' | '.join(f"{a}: {b}" for a, b in bias_actual.items())
+        print(f"💓 Heartbeat CRT {datetime.now().strftime('%H:%M:%S')} "
+              f"[Bias: {estado_bias}] [Operaciones activas: {len(operaciones_activas)}]")
+
         time.sleep(60)
 
 if __name__ == "__main__":
