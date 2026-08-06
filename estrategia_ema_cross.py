@@ -24,6 +24,11 @@ operaciones_activas = {}
 
 def analizar_apertura_ny(simbolo):
     try:
+        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
+        trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
+        if trades_abiertos:
+            return  # Ya hay trade abierto, no evaluar
+
         tz_ny = pytz.timezone('America/New_York')
         ahora_ny = datetime.now(tz_ny)
 

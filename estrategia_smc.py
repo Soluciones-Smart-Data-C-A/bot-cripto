@@ -1,0 +1,206 @@
+"""
+Script de Trading Automático - Estrategia SMC (Smart Money Concepts)
+Basado en: https://www.youtube.com/watch?v=f55zVH388z4
+Concepto: FVG (Fair Value Gaps) + BOS (Break of Structure).
+Persistencia unificada en historial_operaciones vía common.
+"""
+
+import sys
+import time
+import warnings
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import yfinance as yf
+
+import common
+
+warnings.filterwarnings('ignore')
+
+ESTRATEGIA = 'SMC_FVG_BOS'
+operaciones_activas = {}
+
+BOS_WINDOW = 5
+
+
+def detect_fair_value_gaps(df):
+    """Detecta Ineficiencias FVG (BISI y SIBI) y calcula el punto medio (50%)."""
+    df = df.copy()
+
+    # BISI (Fair Value Gap Alcista): High de vela 1 < Low de vela 3
+    df['BISI'] = df['High'].shift(2) < df['Low']
+    df['BISI_top'] = np.where(df['BISI'], df['Low'], np.nan)
+    df['BISI_bottom'] = np.where(df['BISI'], df['High'].shift(2), np.nan)
+    df['BISI_mid'] = (df['BISI_top'] + df['BISI_bottom']) / 2
+
+    # SIBI / CBI (Fair Value Gap Bajista): Low de vela 1 > High de vela 3
+    df['SIBI'] = df['Low'].shift(2) > df['High']
+    df['SIBI_top'] = np.where(df['SIBI'], df['Low'].shift(2), np.nan)
+    df['SIBI_bottom'] = np.where(df['SIBI'], df['High'], np.nan)
+    df['SIBI_mid'] = (df['SIBI_top'] + df['SIBI_bottom']) / 2
+
+    return df
+
+
+def detect_break_of_structure(df, window=BOS_WINDOW):
+    """Identifica cierres con cuerpo por encima/debajo de máximos/mínimos anteriores (BOS)."""
+    df['prev_high'] = df['High'].shift(1).rolling(window=window).max()
+    df['prev_low'] = df['Low'].shift(1).rolling(window=window).min()
+
+    df['BOS_Bullish'] = df['Close'] > df['prev_high']
+    df['BOS_Bearish'] = df['Close'] < df['prev_low']
+
+    return df
+
+
+def generate_smc_signals(df):
+    """Genera señales de Trading basadas en FVG + Respeta 50% + BOS."""
+    df = detect_fair_value_gaps(df)
+    df = detect_break_of_structure(df)
+
+    df['Signal'] = 0
+    df['Stop_Loss'] = np.nan
+    df['Take_Profit'] = np.nan
+
+    active_sibi_mid = None
+    active_bisi_mid = None
+
+    for i in range(2, len(df)):
+        if df['SIBI'].iloc[i]:
+            active_sibi_mid = df['SIBI_mid'].iloc[i]
+        if df['BISI'].iloc[i]:
+            active_bisi_mid = df['BISI_mid'].iloc[i]
+
+        # Estrategia Bajista (Short)
+        if df['BOS_Bearish'].iloc[i] and active_sibi_mid is not None:
+            if df['Close'].iloc[i] < active_sibi_mid:
+                df.at[df.index[i], 'Signal'] = -1
+                df.at[df.index[i], 'Stop_Loss'] = df['High'].iloc[i-2:i+1].max()
+                df.at[df.index[i], 'Take_Profit'] = df['prev_low'].iloc[i]
+                active_sibi_mid = None
+
+        # Estrategia Alcista (Long)
+        elif df['BOS_Bullish'].iloc[i] and active_bisi_mid is not None:
+            if df['Close'].iloc[i] > active_bisi_mid:
+                df.at[df.index[i], 'Signal'] = 1
+                df.at[df.index[i], 'Stop_Loss'] = df['Low'].iloc[i-2:i+1].min()
+                df.at[df.index[i], 'Take_Profit'] = df['prev_high'].iloc[i]
+                active_bisi_mid = None
+
+    return df
+
+
+def analizar_smc(simbolo):
+    try:
+        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
+        trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
+        if trades_abiertos:
+            return
+
+        df = yf.download(simbolo, period='5d', interval='15m', progress=False, auto_adjust=True)
+        if df.empty:
+            return
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+
+        df = generate_smc_signals(df)
+
+        ult = df.iloc[-1]
+        signal = int(ult['Signal'])
+        precio_actual = float(ult['Close'])
+
+        if signal == 0:
+            return
+
+        tipo = 'LONG' if signal == 1 else 'SHORT'
+        sl = float(ult['Stop_Loss'])
+        tp = float(ult['Take_Profit'])
+
+        if simbolo in operaciones_activas:
+            return
+
+        id_op = common.registrar_apertura(ESTRATEGIA, simbolo, tipo, precio_actual,
+                                          sl=sl, tp=tp)
+        if id_op is None:
+            return
+
+        operaciones_activas[simbolo] = {'tipo': tipo, 'entrada': precio_actual, 'id': id_op}
+
+        emoji = '🚀' if tipo == 'LONG' else '📉'
+        common.enviar_telegram(ESTRATEGIA, simbolo,
+            f"{emoji} *SMC: SEÑAL {tipo}*\n"
+            f"Par: {simbolo}\nPrecio: {precio_actual:.5f}\n"
+            f"SL: {sl:.5f}\nTP: {tp:.5f}\n"
+            f"ID: {id_op}")
+
+    except Exception as e:
+        print(f"⚠️ Error SMC analizando {simbolo}: {e}")
+
+
+def gestionar_operaciones():
+    for simbolo in list(operaciones_activas.keys()):
+        try:
+            op = operaciones_activas[simbolo]
+
+            trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
+            if not trades_abiertos:
+                del operaciones_activas[simbolo]
+                continue
+
+            df = yf.download(simbolo, period='1d', interval='1m', progress=False, auto_adjust=True)
+            if df.empty:
+                continue
+
+            if isinstance(df.columns, pd.MultiIndex):
+                df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+
+            p_actual = float(df['Close'].iloc[-1])
+            cerrar = False
+            msg = ""
+
+            if op['tipo'] == 'LONG':
+                if p_actual >= op.get('tp', float('inf')):
+                    cerrar, msg = True, "TP ✅"
+                elif p_actual <= op.get('sl', 0):
+                    cerrar, msg = True, "SL ❌"
+            else:
+                if p_actual <= op.get('tp', 0):
+                    cerrar, msg = True, "TP ✅"
+                elif p_actual >= op.get('sl', float('inf')):
+                    cerrar, msg = True, "SL ❌"
+
+            if cerrar:
+                common.registrar_cierre(op['id'], p_actual, msg)
+                common.enviar_telegram(ESTRATEGIA, simbolo,
+                    f"🏁 *CIERRE SMC ({simbolo})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
+                    f"ID: {op['id']}")
+                del operaciones_activas[simbolo]
+
+        except Exception as e:
+            print(f"⚠️ Error SMC gestionando {simbolo}: {e}")
+
+
+def ejecutar_bot():
+    common.inicializar_db()
+    common.enviar_telegram(ESTRATEGIA, None,
+        "📈 *Bot SMC FVG/BOS Activo*\nEstrategia: Fair Value Gaps + Break of Structure.")
+
+    while True:
+        for activo in common.ACTIVOS:
+            analizar_smc(activo)
+            time.sleep(2)
+
+        gestionar_operaciones()
+
+        print(f"💓 Heartbeat SMC {datetime.now().strftime('%H:%M:%S')} "
+              f"[Operaciones activas: {len(operaciones_activas)}]")
+
+        time.sleep(60)
+
+
+if __name__ == "__main__":
+    if not common.verificar_config():
+        sys.exit(1)
+    ejecutar_bot()

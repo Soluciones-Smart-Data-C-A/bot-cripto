@@ -179,6 +179,34 @@ def registrar_cierre(id_operacion, precio_salida, resultado):
     finally:
         conn.close()
 
+def obtener_trades_abiertos(estrategia, simbolo=None):
+    """Obtiene trades abiertos de una estrategia desde la BD."""
+    conn = get_db_connection()
+    trades = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            if simbolo:
+                cursor.execute("""
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp
+                    FROM historial_operaciones
+                    WHERE estrategia = %s AND simbolo = %s AND resultado = 'ABIERTA'
+                """, (estrategia, simbolo))
+            else:
+                cursor.execute("""
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp
+                    FROM historial_operaciones
+                    WHERE estrategia = %s AND resultado = 'ABIERTA'
+                """, (estrategia,))
+            trades = [{'id': row[0], 'simbolo': row[1], 'tipo': row[2],
+                       'entrada': row[3], 'sl': row[4], 'tp': row[5]}
+                      for row in cursor.fetchall()]
+        except Error as e:
+            print(f"❌ Error obteniendo trades abiertos: {e}")
+        finally:
+            conn.close()
+    return trades
+
 # ==========================================
 # TELEGRAM
 # ==========================================

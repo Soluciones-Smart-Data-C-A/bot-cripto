@@ -89,9 +89,14 @@ class EstrategiaCRT:
 # ==========================================
 def chequear_entradas():
     for activo in common.ACTIVOS:
-        # Evitar duplicados
+        # Evitar duplicados en memoria
         if any(op['simbolo'] == activo for op in operaciones_activas):
             continue
+
+        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
+        trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, activo)
+        if trades_abiertos:
+            continue  # Ya hay trade abierto en BD, no evaluar
 
         bot = EstrategiaCRT(activo)
         if bot.establecer_rango_y_bias():

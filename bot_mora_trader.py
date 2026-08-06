@@ -27,6 +27,11 @@ def calcular_sl_tp(tipo, precio):
 
 def analizar_estrategia(simbolo):
     try:
+        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
+        trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
+        if trades_abiertos:
+            return  # Ya hay trade abierto, no evaluar
+
         # Descarga de datos para análisis de tendencia
         df = yf.download(simbolo, period='2d', interval='15m', progress=False, auto_adjust=True)
         if df.empty:
