@@ -23,6 +23,7 @@ COPY common.py .
 COPY estrategia_crt_v2.py .
 COPY bot_mora_trader.py .
 COPY estrategia_ema_cross.py .
+COPY estrategia_smc.py .
 
 # Ejecutar
-CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py
+CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py
