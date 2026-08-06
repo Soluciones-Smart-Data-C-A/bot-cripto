@@ -103,6 +103,15 @@ def analizar_estrategia(simbolo):
 
 def ejecutar_bot():
     common.inicializar_db()
+
+    # Reanudar trades abiertos de BD
+    trades = common.obtener_trades_abiertos(ESTRATEGIA)
+    for t in trades:
+        operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'], 'id': t['id']}
+    if trades:
+        common.enviar_telegram(ESTRATEGIA, None,
+            f"🔄 *TRADES REANUDADOS (MORA)*\n{len(trades)} operación(es) recuperada(s)")
+
     common.enviar_telegram(ESTRATEGIA, None,
         "📊 *Bot Mora Trader EMA v2.6 Activo*\nEstrategia: Cruce EMA 9/21 (SL/TP 1:2)")
 

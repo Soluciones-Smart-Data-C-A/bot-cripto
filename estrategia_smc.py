@@ -184,6 +184,16 @@ def gestionar_operaciones():
 
 def ejecutar_bot():
     common.inicializar_db()
+
+    # Reanudar trades abiertos de BD
+    trades = common.obtener_trades_abiertos(ESTRATEGIA)
+    for t in trades:
+        operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'],
+                                              'sl': t['sl'], 'tp': t['tp'], 'id': t['id']}
+    if trades:
+        common.enviar_telegram(ESTRATEGIA, None,
+            f"🔄 *TRADES REANUDADOS (SMC)*\n{len(trades)} operación(es) recuperada(s)")
+
     common.enviar_telegram(ESTRATEGIA, None,
         "📈 *Bot SMC FVG/BOS Activo*\nEstrategia: Fair Value Gaps + Break of Structure.")
 

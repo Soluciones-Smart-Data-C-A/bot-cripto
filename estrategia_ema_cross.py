@@ -132,6 +132,15 @@ def analizar_apertura_ny(simbolo):
 
 def ejecutar_bot():
     common.inicializar_db()
+
+    # Reanudar trades abiertos de BD
+    trades = common.obtener_trades_abiertos(ESTRATEGIA)
+    for t in trades:
+        operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'], 'id': t['id']}
+    if trades:
+        common.enviar_telegram(ESTRATEGIA, None,
+            f"🔄 *TRADES REANUDADOS (NY OPEN)*\n{len(trades)} operación(es) recuperada(s)")
+
     common.enviar_telegram(ESTRATEGIA, None,
         "🏛️ *Mora Trader NY Open Activo*\nEsperando vela de las 9:30 AM NY...")
 
