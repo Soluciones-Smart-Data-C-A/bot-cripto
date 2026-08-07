@@ -268,19 +268,30 @@ def api_trade_detail(trade_id):
         ohlc = []
         if r[4] and r[2]:
             try:
-                start = r[4] - timedelta(hours=1)
-                if r[10]:  # fecha_cierre existe
-                    end = r[10] + timedelta(hours=1)
-                else:  # trade abierto, máximo 24h desde apertura
-                    end = min(r[4] + timedelta(hours=24), datetime.now())
+                simbolo = r[2]
+                fecha_apertura = r[4]
+                fecha_cierre = r[10]
 
-                duracion_horas = (end - start).total_seconds() / 3600
-                interval = '5m' if duracion_horas <= 24 else '15m'
+                # Elegir intervalo según duración
+                if fecha_cierre:
+                    duracion = (fecha_cierre - fecha_apertura).total_seconds() / 3600
+                else:
+                    duracion = min((datetime.now() - fecha_apertura).total_seconds() / 3600, 24)
 
+                if duracion <= 6:
+                    interval = '5m'
+                    period = '5d'
+                elif duracion <= 48:
+                    interval = '15m'
+                    period = '30d'
+                else:
+                    interval = '1h'
+                    period = '60d'
+
+                # Descargar usando period (más confiable que start/end)
                 df = yf.download(
-                    r[2],
-                    start=start.strftime('%Y-%m-%d'),
-                    end=end.strftime('%Y-%m-%d'),
+                    simbolo,
+                    period=period,
                     interval=interval,
                     progress=False
                 )
@@ -289,16 +300,26 @@ def api_trade_detail(trade_id):
                     if hasattr(df.columns, 'get_level_values'):
                         df.columns = df.columns.get_level_values(0)
 
+                    # Filtrar solo las velas dentro del rango del trade
+                    fecha_ini = fecha_apertura - timedelta(minutes=30)
+                    fecha_fin = (fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()
+
                     for idx, row in df.iterrows():
-                        ohlc.append({
-                            'time': int(idx.timestamp()),
-                            'open': round(float(row['Open']), 5),
-                            'high': round(float(row['High']), 5),
-                            'low': round(float(row['Low']), 5),
-                            'close': round(float(row['Close']), 5)
-                        })
+                        vela_time = idx.to_pydatetime() if hasattr(idx, 'to_pydatetime') else idx
+                        # Si el índice tiene timezone, convertir a naive
+                        if hasattr(vela_time, 'tzinfo') and vela_time.tzinfo is not None:
+                            vela_time = vela_time.replace(tzinfo=None)
+
+                        if fecha_ini <= vela_time <= fecha_fin:
+                            ohlc.append({
+                                'time': int(idx.timestamp()),
+                                'open': round(float(row['Open']), 5),
+                                'high': round(float(row['High']), 5),
+                                'low': round(float(row['Low']), 5),
+                                'close': round(float(row['Close']), 5)
+                            })
             except Exception as e:
-                print(f"⚠️ Error descargando OHLC: {e}")
+                print(f"⚠️ Error descargando OHLC para {r[2]}: {e}")
 
         trade['ohlc'] = ohlc
         return jsonify(trade)
