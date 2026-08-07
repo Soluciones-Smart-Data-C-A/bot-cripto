@@ -135,6 +135,9 @@ def analizar_estrategia(simbolo):
 def ejecutar_bot():
     common.inicializar_db()
 
+    # Cerrar trades trabados automáticamente
+    cerrados = common.cerrar_trades_trabados(ESTRATEGIA, max_horas=MAX_HORAS_ABIERTO)
+
     # Reanudar trades abiertos de BD
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:

@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import datetime
 
+import pandas as pd
 import requests
 import mysql.connector
 from mysql.connector import Error
@@ -207,6 +208,75 @@ def obtener_trades_abiertos(estrategia, simbolo=None):
         finally:
             conn.close()
     return trades
+
+def cerrar_trades_trabados(estrategia, max_horas=24):
+    """Cierra automáticamente trades abiertos por más de X horas."""
+    import yfinance as yf
+
+    conn = get_db_connection()
+    if not conn:
+        return []
+
+    cerrados = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, simbolo, tipo, precio_entrada, fecha_apertura
+            FROM historial_operaciones
+            WHERE estrategia = %s AND resultado = 'ABIERTA'
+            AND fecha_apertura < NOW() - INTERVAL %s HOUR
+        """, (estrategia, max_horas))
+
+        trades = cursor.fetchall()
+
+        for t in trades:
+            trade_id, simbolo, tipo, entrada, fecha = t
+
+            # Obtener precio actual
+            try:
+                df = yf.download(simbolo, period='1d', interval='1m', progress=False, auto_adjust=True)
+                if df.empty:
+                    continue
+
+                if isinstance(df.columns, pd.MultiIndex):
+                    df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+
+                precio = float(df['Close'].iloc[-1])
+
+                cursor.execute("""
+                    UPDATE historial_operaciones
+                    SET fecha_cierre = NOW(), precio_salida = %s,
+                        resultado = 'CERRADO_AUTOMÁTICO'
+                    WHERE id = %s
+                """, (precio, trade_id))
+
+                cerrados.append({
+                    'id': trade_id,
+                    'simbolo': simbolo,
+                    'tipo': tipo,
+                    'entrada': float(entrada),
+                    'salida': precio
+                })
+            except Exception as e:
+                print(f"⚠️ Error cerrando trade {trade_id}: {e}")
+
+        conn.commit()
+
+        # Notificar por Telegram si se cerraron trades
+        if cerrados:
+            msg = f"🔄 *TRADES CERRADOS AUTOMÁTICAMENTE ({estrategia})*\n"
+            msg += f"Se cerraron {len(cerrados)} trade(s) con más de {max_horas}h:\n"
+            for c in cerrados:
+                emoji = '📈' if c['tipo'] == 'LONG' else '📉'
+                msg += f"{emoji} {c['simbolo']} {c['tipo']} @ {c['entrada']:.5f} → {c['salida']:.5f}\n"
+            enviar_telegram(estrategia, None, msg)
+
+    except Error as e:
+        print(f"❌ Error cerrando trades trabados: {e}")
+    finally:
+        conn.close()
+
+    return cerrados
 
 # ==========================================
 # TELEGRAM
