@@ -268,15 +268,20 @@ def api_trade_detail(trade_id):
         ohlc = []
         if r[4] and r[2]:
             try:
-                # Agregar margen antes/después para contexto
                 start = r[4] - timedelta(hours=1)
-                end = r[8] + timedelta(hours=1) if r[8] else datetime.now()
+                if r[10]:  # fecha_cierre existe
+                    end = r[10] + timedelta(hours=1)
+                else:  # trade abierto, máximo 24h desde apertura
+                    end = min(r[4] + timedelta(hours=24), datetime.now())
+
+                duracion_horas = (end - start).total_seconds() / 3600
+                interval = '5m' if duracion_horas <= 24 else '15m'
 
                 df = yf.download(
                     r[2],
                     start=start.strftime('%Y-%m-%d'),
                     end=end.strftime('%Y-%m-%d'),
-                    interval='5m',
+                    interval=interval,
                     progress=False
                 )
 
