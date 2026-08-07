@@ -374,8 +374,8 @@
                 <div class="item"><div class="label">Cierre</div><div class="value">${trade.fecha_cierre || '-'}</div></div>
             `;
 
-            renderChart(trade);
             document.getElementById('modal-detail').classList.add('active');
+            setTimeout(() => renderChart(trade), 50);
         }
 
         function renderChart(trade) {
