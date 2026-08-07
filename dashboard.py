@@ -16,6 +16,9 @@ import common
 
 app = Flask(__name__)
 
+# Archivo de estado de notificaciones
+NOTIFY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
+
 # Mapeo de símbolos del bot a Binance
 SYMBOL_MAP = {
     'BTC-USD': 'BTCUSDT',
@@ -407,6 +410,26 @@ def api_saldos():
     limit = request.args.get('limit', 30, type=int)
     saldos = common.obtener_saldos(limit=limit)
     return jsonify(saldos)
+
+
+# ==========================================
+# API: NOTIFICACIONES
+# ==========================================
+@app.route('/api/notifications/status')
+def api_notifications_status():
+    enabled = not os.path.exists(NOTIFY_FILE)
+    return jsonify({'enabled': enabled})
+
+@app.route('/api/notifications/toggle', methods=['POST'])
+def api_notifications_toggle():
+    if os.path.exists(NOTIFY_FILE):
+        os.remove(NOTIFY_FILE)
+        enabled = True
+    else:
+        with open(NOTIFY_FILE, 'w') as f:
+            f.write('off')
+        enabled = False
+    return jsonify({'enabled': enabled})
 
 
 # ==========================================

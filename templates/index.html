@@ -87,6 +87,14 @@
         .dp-grid .dp-day.other-month { color: #484f58; }
         .dp-clear { font-size: 11px; color: #8b949e; cursor: pointer; margin-top: 6px; display: inline-block; }
         .dp-clear:hover { color: #f85149; }
+
+        /* Botones de acción */
+        .btn-action { background: #21262d; color: #e1e4e8; border: 1px solid #30363d; padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+        .btn-action:hover { background: #30363d; border-color: #8b949e; }
+        .btn-reset { color: #f85149; }
+        .btn-reset:hover { border-color: #f85149; }
+        .btn-notify { color: #3fb950; }
+        .btn-notify.muted { color: #f85149; }
     </style>
 </head>
 <body>
@@ -125,6 +133,10 @@
                     <option value="SL">Perdió</option>
                     <option value="ABIERTA">Abiertas</option>
                 </select>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:8px;margin-left:auto;">
+                <button class="btn-action btn-reset" onclick="resetFilters()">✕ Limpiar</button>
+                <button class="btn-action btn-notify" id="btn-notify" onclick="toggleNotifications()">🔔 Notificaciones</button>
             </div>
         </div>
 
@@ -311,6 +323,7 @@
             loadFilters();
             loadData();
             loadSaldos();
+            checkNotifyStatus();
         });
 
         async function loadFilters() {
@@ -348,6 +361,47 @@
             const q = new URLSearchParams();
             Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
             return q.toString();
+        }
+
+        function resetFilters() {
+            document.getElementById('filter-estrategia').value = '';
+            document.getElementById('filter-simbolo').value = '';
+            document.getElementById('filter-desde').value = '';
+            document.getElementById('filter-hasta').value = '';
+            document.getElementById('filter-resultado').value = '';
+            dpState.desde = null;
+            dpState.hasta = null;
+            closeAllDP();
+            loadData();
+        }
+
+        let notificationsEnabled = true;
+
+        async function toggleNotifications() {
+            const resp = await fetch('/api/notifications/toggle', { method: 'POST' });
+            const data = await resp.json();
+            notificationsEnabled = data.enabled;
+            updateNotifyBtn();
+        }
+
+        function updateNotifyBtn() {
+            const btn = document.getElementById('btn-notify');
+            if (notificationsEnabled) {
+                btn.textContent = '🔔 Notificaciones';
+                btn.classList.remove('muted');
+            } else {
+                btn.textContent = '🔕 Notificaciones';
+                btn.classList.add('muted');
+            }
+        }
+
+        async function checkNotifyStatus() {
+            try {
+                const resp = await fetch('/api/notifications/status');
+                const data = await resp.json();
+                notificationsEnabled = data.enabled;
+                updateNotifyBtn();
+            } catch(e) {}
         }
 
         function formatResult(resultado) {

@@ -426,6 +426,12 @@ def obtener_saldos(chat_id=None, limit=30):
 # TELEGRAM
 # ==========================================
 def enviar_telegram(estrategia, simbolo, mensaje):
+    # Verificar si las notificaciones están desactivadas
+    notify_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
+    if os.path.exists(notify_file):
+        print(f"🔕 [{estrategia}] Notificación desactivada: {mensaje[:50]}...")
+        return
+
     ids = obtener_suscriptores()
     if not ids or not TELEGRAM_TOKEN:
         print(f"📢 [{estrategia}] {mensaje}")
