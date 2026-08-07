@@ -7,3 +7,4 @@ mysql-connector-python
 cryptography
 python-dotenv
 flask
+pyTelegramBotAPI

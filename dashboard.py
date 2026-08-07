@@ -334,6 +334,16 @@ def api_filters():
 
 
 # ==========================================
+# API: SALDOS
+# ==========================================
+@app.route('/api/saldos')
+def api_saldos():
+    limit = request.args.get('limit', 30, type=int)
+    saldos = common.obtener_saldos(limit=limit)
+    return jsonify(saldos)
+
+
+# ==========================================
 # MAIN
 # ==========================================
 if __name__ == '__main__':

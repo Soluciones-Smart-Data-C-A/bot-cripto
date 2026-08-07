@@ -121,6 +121,15 @@ def inicializar_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saldos_diarios (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chat_id VARCHAR(50) NOT NULL,
+                saldo FLOAT NOT NULL,
+                fecha DATETIME DEFAULT NOW()
+            )
+        """)
+
         conn.commit()
     except Error as e:
         print(f"❌ Error inicializando tablas: {e}")
@@ -277,6 +286,57 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
         conn.close()
 
     return cerrados
+
+# ==========================================
+# SALDOS
+# ==========================================
+def registrar_saldo(chat_id, saldo):
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO saldos_diarios (chat_id, saldo, fecha)
+            VALUES (%s, %s, NOW())
+        """, (str(chat_id), saldo))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error registrando saldo: {e}")
+        return False
+    finally:
+        conn.close()
+
+def obtener_saldos(chat_id=None, limit=30):
+    conn = get_db_connection()
+    saldos = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            if chat_id:
+                cursor.execute("""
+                    SELECT id, chat_id, saldo, fecha
+                    FROM saldos_diarios
+                    WHERE chat_id = %s
+                    ORDER BY fecha DESC
+                    LIMIT %s
+                """, (str(chat_id), limit))
+            else:
+                cursor.execute("""
+                    SELECT id, chat_id, saldo, fecha
+                    FROM saldos_diarios
+                    ORDER BY fecha DESC
+                    LIMIT %s
+                """, (limit,))
+            saldos = [{'id': r[0], 'chat_id': r[1], 'saldo': float(r[2]),
+                       'fecha': r[3].strftime('%Y-%m-%d %H:%M') if r[3] else None}
+                      for r in cursor.fetchall()]
+        except Error as e:
+            print(f"❌ Error obteniendo saldos: {e}")
+        finally:
+            conn.close()
+    return saldos
 
 # ==========================================
 # TELEGRAM

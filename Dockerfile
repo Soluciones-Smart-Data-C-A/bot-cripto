@@ -25,6 +25,7 @@ COPY bot_mora_trader.py .
 COPY estrategia_ema_cross.py .
 COPY estrategia_smc.py .
 COPY dashboard.py .
+COPY bot_telegram_listener.py .
 
 # Copiar templates
 COPY templates/ ./templates/
@@ -33,4 +34,4 @@ COPY templates/ ./templates/
 EXPOSE 5000
 
 # Ejecutar
-CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py & python dashboard.py
+CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py & python bot_telegram_listener.py & python dashboard.py
