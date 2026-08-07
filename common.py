@@ -126,6 +126,9 @@ def inicializar_db():
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 chat_id VARCHAR(50) NOT NULL,
                 saldo FLOAT NOT NULL,
+                meta_diaria FLOAT,
+                perdida_trade FLOAT,
+                ganancia_trade FLOAT,
                 fecha DATETIME DEFAULT NOW()
             )
         """)
@@ -290,21 +293,66 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
 # ==========================================
 # SALDOS
 # ==========================================
+def calcular_meta_diaria(balance):
+    """Calcula meta diaria (5%) y montos por trade (30% WR, ratio 1:3).
+    Fórmula verificada con ejemplos del usuario."""
+    meta = balance * 0.05
+    perdida = balance * 0.007534
+    ganancia = balance * 0.03424
+    return {
+        'balance': balance,
+        'meta_diaria': round(meta, 2),
+        'perdida_trade': round(perdida, 2),
+        'ganancia_trade': round(ganancia, 2)
+    }
+
 def registrar_saldo(chat_id, saldo):
     conn = get_db_connection()
     if not conn:
-        return False
+        return None
+    try:
+        meta = calcular_meta_diaria(saldo)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO saldos_diarios
+                (chat_id, saldo, meta_diaria, perdida_trade, ganancia_trade, fecha)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+        """, (str(chat_id), saldo, meta['meta_diaria'],
+              meta['perdida_trade'], meta['ganancia_trade']))
+        conn.commit()
+        return meta
+    except Error as e:
+        print(f"❌ Error registrando saldo: {e}")
+        return None
+    finally:
+        conn.close()
+
+def obtener_meta_diaria(chat_id):
+    """Obtiene la meta diaria calculada del último saldo registrado."""
+    conn = get_db_connection()
+    if not conn:
+        return None
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO saldos_diarios (chat_id, saldo, fecha)
-            VALUES (%s, %s, NOW())
-        """, (str(chat_id), saldo))
-        conn.commit()
-        return True
+            SELECT saldo, meta_diaria, perdida_trade, ganancia_trade
+            FROM saldos_diarios
+            WHERE chat_id = %s
+            ORDER BY fecha DESC
+            LIMIT 1
+        """, (str(chat_id),))
+        r = cursor.fetchone()
+        if r:
+            return {
+                'balance': float(r[0]),
+                'meta_diaria': float(r[1]),
+                'perdida_trade': float(r[2]),
+                'ganancia_trade': float(r[3])
+            }
+        return None
     except Error as e:
-        print(f"❌ Error registrando saldo: {e}")
-        return False
+        print(f"❌ Error obteniendo meta diaria: {e}")
+        return None
     finally:
         conn.close()
 
@@ -316,7 +364,7 @@ def obtener_saldos(chat_id=None, limit=30):
             cursor = conn.cursor()
             if chat_id:
                 cursor.execute("""
-                    SELECT id, chat_id, saldo, fecha
+                    SELECT id, chat_id, saldo, meta_diaria, perdida_trade, ganancia_trade, fecha
                     FROM saldos_diarios
                     WHERE chat_id = %s
                     ORDER BY fecha DESC
@@ -324,13 +372,16 @@ def obtener_saldos(chat_id=None, limit=30):
                 """, (str(chat_id), limit))
             else:
                 cursor.execute("""
-                    SELECT id, chat_id, saldo, fecha
+                    SELECT id, chat_id, saldo, meta_diaria, perdida_trade, ganancia_trade, fecha
                     FROM saldos_diarios
                     ORDER BY fecha DESC
                     LIMIT %s
                 """, (limit,))
             saldos = [{'id': r[0], 'chat_id': r[1], 'saldo': float(r[2]),
-                       'fecha': r[3].strftime('%Y-%m-%d %H:%M') if r[3] else None}
+                       'meta_diaria': float(r[3]) if r[3] else None,
+                       'perdida_trade': float(r[4]) if r[4] else None,
+                       'ganancia_trade': float(r[5]) if r[5] else None,
+                       'fecha': r[6].strftime('%Y-%m-%d %H:%M') if r[6] else None}
                       for r in cursor.fetchall()]
         except Error as e:
             print(f"❌ Error obteniendo saldos: {e}")

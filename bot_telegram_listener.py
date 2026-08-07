@@ -37,9 +37,11 @@ def cmd_help(message):
     bot.reply_to(message,
         "📊 *Bot Cripto - Saldos*\n\n"
         "Comandos:\n"
-        "/saldo 5000 - Registrar saldo\n"
-        "/saldo - Ver último saldo\n"
-        "/historial - Últimos 10 registros",
+        "/saldo 73 - Registrar saldo\n"
+        "/saldo - Ver último saldo y meta\n"
+        "/historial - Últimos 10 registros\n\n"
+        "La meta diaria se calcula al 5% del saldo.\n"
+        "Win rate asumido: 30% (3W / 7L en 10 trades).",
         parse_mode="Markdown")
 
 
@@ -63,15 +65,23 @@ def cmd_saldo(message):
             return
 
         if common.registrar_saldo(message.chat.id, saldo):
-            bot.reply_to(message, f"✅ Saldo registrado: *${saldo:,.2f}*", parse_mode="Markdown")
+            meta = common.calcular_meta_diaria(saldo)
+            bot.reply_to(message,
+                f"✅ Saldo registrado: *${saldo:,.2f}*\n\n"
+                f"📊 *Meta diaria (5%):* ${meta['meta_diaria']:.2f}\n"
+                f"Per trade: ganar *${meta['ganancia_trade']:.2f}* / perder *${meta['perdida_trade']:.2f}*\n"
+                f"10 trades (30% WR): +${meta['ganancia_trade']*3:.2f} - ${meta['perdida_trade']*7:.2f} = *${meta['meta_diaria']:.2f}*",
+                parse_mode="Markdown")
         else:
             bot.reply_to(message, "❌ Error guardando saldo. Intenta de nuevo.")
     else:
-        saldos = common.obtener_saldos(chat_id=message.chat.id, limit=1)
-        if saldos:
-            s = saldos[0]
+        meta = common.obtener_meta_diaria(message.chat.id)
+        if meta:
             bot.reply_to(message,
-                f"💰 *Último saldo:* ${s['saldo']:,.2f}\n📅 {s['fecha']}",
+                f"💰 *Último saldo:* ${meta['balance']:,.2f}\n\n"
+                f"📊 *Meta diaria (5%):* ${meta['meta_diaria']:.2f}\n"
+                f"Per trade: ganar *${meta['ganancia_trade']:.2f}* / perder *${meta['perdida_trade']:.2f}*\n"
+                f"10 trades (30% WR): +${meta['ganancia_trade']*3:.2f} - ${meta['perdida_trade']*7:.2f} = *${meta['meta_diaria']:.2f}*",
                 parse_mode="Markdown")
         else:
             bot.reply_to(message, "📭 No hay saldos registrados.\nUsa: /saldo 5000")
@@ -89,7 +99,7 @@ def cmd_historial(message):
 
     lines = ["📊 *Historial de Saldos:*\n"]
     for s in saldos:
-        lines.append(f"• ${s['saldo']:,.2f} - {s['fecha']}")
+        lines.append(f"• ${s['saldo']:,.2f} | Meta: ${s['meta_diaria']:.2f} | {s['fecha']}")
 
     bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
