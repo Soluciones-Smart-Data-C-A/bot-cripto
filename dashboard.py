@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-import yfinance as yf
+import requests
 from flask import Flask, jsonify, render_template, request
 
 # Agregar directorio actual al path para importar common
@@ -15,6 +15,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 
 app = Flask(__name__)
+
+# Mapeo de símbolos del bot a Binance
+SYMBOL_MAP = {
+    'BTC-USD': 'BTCUSDT',
+    'SOL-USD': 'SOLUSDT',
+}
+
+BINANCE_INTERVALS = {
+    '1m': '1m',
+    '5m': '5m',
+    '15m': '15m',
+    '1h': '1h',
+}
 
 
 # ==========================================
@@ -264,62 +277,54 @@ def api_trade_detail(trade_id):
             'resultado': r[12]
         }
 
-        # Descargar OHLC para el gráfico de velas
+        # Descargar OHLC desde Binance API
         ohlc = []
         if r[4] and r[2]:
             try:
-                simbolo = r[2]
+                simbolo_bot = r[2]
+                simbolo_binance = SYMBOL_MAP.get(simbolo_bot)
                 fecha_apertura = r[4]
                 fecha_cierre = r[10]
 
-                # Elegir intervalo según duración
-                if fecha_cierre:
-                    duracion = (fecha_cierre - fecha_apertura).total_seconds() / 3600
-                else:
-                    duracion = min((datetime.now() - fecha_apertura).total_seconds() / 3600, 24)
+                if simbolo_binance:
+                    if fecha_cierre:
+                        duracion = (fecha_cierre - fecha_apertura).total_seconds() / 3600
+                    else:
+                        duracion = min((datetime.now() - fecha_apertura).total_seconds() / 3600, 24)
 
-                if duracion <= 6:
-                    interval = '5m'
-                    period = '5d'
-                elif duracion <= 48:
-                    interval = '15m'
-                    period = '30d'
-                else:
-                    interval = '1h'
-                    period = '60d'
+                    if duracion <= 6:
+                        interval = '5m'
+                    elif duracion <= 48:
+                        interval = '15m'
+                    else:
+                        interval = '1h'
 
-                # Descargar usando period (más confiable que start/end)
-                df = yf.download(
-                    simbolo,
-                    period=period,
-                    interval=interval,
-                    progress=False
-                )
+                    # Binance usa milisegundos
+                    start_ms = int((fecha_apertura - timedelta(minutes=30)).timestamp() * 1000)
+                    end_ms = int(((fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()).timestamp() * 1000)
 
-                if not df.empty:
-                    if hasattr(df.columns, 'get_level_values'):
-                        df.columns = df.columns.get_level_values(0)
+                    url = 'https://api.binance.com/api/v3/klines'
+                    params = {
+                        'symbol': simbolo_binance,
+                        'interval': interval,
+                        'startTime': start_ms,
+                        'endTime': end_ms,
+                        'limit': 1000
+                    }
 
-                    # Filtrar solo las velas dentro del rango del trade
-                    fecha_ini = fecha_apertura - timedelta(minutes=30)
-                    fecha_fin = (fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()
-
-                    for idx, row in df.iterrows():
-                        vela_time = idx.to_pydatetime() if hasattr(idx, 'to_pydatetime') else idx
-                        # Si el índice tiene timezone, convertir a naive
-                        if hasattr(vela_time, 'tzinfo') and vela_time.tzinfo is not None:
-                            vela_time = vela_time.replace(tzinfo=None)
-
-                        if fecha_ini <= vela_time <= fecha_fin:
+                    resp = requests.get(url, params=params, timeout=10)
+                    if resp.status_code == 200:
+                        candles = resp.json()
+                        for c in candles:
                             ohlc.append({
-                                'time': int(idx.timestamp()),
-                                'open': round(float(row['Open']), 5),
-                                'high': round(float(row['High']), 5),
-                                'low': round(float(row['Low']), 5),
-                                'close': round(float(row['Close']), 5)
+                                'time': int(c[0] / 1000),
+                                'open': round(float(c[1]), 5),
+                                'high': round(float(c[2]), 5),
+                                'low': round(float(c[3]), 5),
+                                'close': round(float(c[4]), 5)
                             })
             except Exception as e:
-                print(f"⚠️ Error descargando OHLC para {r[2]}: {e}")
+                print(f"⚠️ Error descargando OHLC de Binance para {r[2]}: {e}")
 
         trade['ohlc'] = ohlc
         return jsonify(trade)
