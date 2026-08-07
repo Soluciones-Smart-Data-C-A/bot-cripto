@@ -68,7 +68,8 @@ def analizar_apertura_ny(simbolo):
             if rango['manipulado_alto'] and precio_actual < (rango['alto'] - (rango['alto'] * 0.0001)):
                 if simbolo not in operaciones_activas:
                     sl = precio_actual * 1.002
-                    tp = rango['bajo']  # Target: extremo opuesto del rango
+                    risk = sl - precio_actual
+                    tp = precio_actual - (risk * 3)  # Ratio 1:3
                     id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'SHORT', precio_actual,
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
@@ -86,7 +87,8 @@ def analizar_apertura_ny(simbolo):
             if rango['manipulado_bajo'] and precio_actual > (rango['bajo'] + (rango['bajo'] * 0.0001)):
                 if simbolo not in operaciones_activas:
                     sl = precio_actual * 0.998
-                    tp = rango['alto']  # Target: extremo opuesto del rango
+                    risk = precio_actual - sl
+                    tp = precio_actual + (risk * 3)  # Ratio 1:3
                     id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'LONG', precio_actual,
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])

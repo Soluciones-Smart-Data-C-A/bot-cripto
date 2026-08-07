@@ -20,10 +20,10 @@ ESTRATEGIA = 'MORA_EMA_CROSS'
 operaciones_activas = {}
 
 def calcular_sl_tp(tipo, precio):
-    """SL/TP ratio 1:2 (0.2% de stop, 0.4% de target)."""
+    """SL/TP ratio 1:3 (0.2% de stop, 0.6% de target)."""
     if tipo == 'LONG':
-        return round(precio * 0.998, 8), round(precio * 1.004, 8)
-    return round(precio * 1.002, 8), round(precio * 0.996, 8)
+        return round(precio * 0.998, 8), round(precio * 1.006, 8)
+    return round(precio * 1.002, 8), round(precio * 0.994, 8)
 
 def analizar_estrategia(simbolo):
     try:
@@ -113,7 +113,7 @@ def ejecutar_bot():
             f"🔄 *TRADES REANUDADOS (MORA)*\n{len(trades)} operación(es) recuperada(s)")
 
     common.enviar_telegram(ESTRATEGIA, None,
-        "📊 *Bot Mora Trader EMA v2.6 Activo*\nEstrategia: Cruce EMA 9/21 (SL/TP 1:2)")
+        "📊 *Bot Mora Trader EMA v2.6 Activo*\nEstrategia: Cruce EMA 9/21 (SL/TP 1:3)")
 
     while True:
         for activo in common.ACTIVOS:

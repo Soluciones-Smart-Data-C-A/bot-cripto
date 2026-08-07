@@ -105,9 +105,9 @@ def chequear_entradas():
             if signal:
                 p_entrada = float(descargar(activo, '1d', '1m')['Close'].iloc[-1])
 
-                # Gestión de Riesgo (SL fijo de 0.2%, TP de 0.4% -> ratio 1:2)
+                # Gestión de Riesgo (SL fijo de 0.2%, TP de 0.6% -> ratio 1:3)
                 sl = p_entrada * (0.998 if signal == 'LONG' else 1.002)
-                tp = p_entrada * (1.004 if signal == 'LONG' else 0.996)
+                tp = p_entrada * (1.006 if signal == 'LONG' else 0.994)
 
                 nueva_op = {
                     'simbolo': activo,

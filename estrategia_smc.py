@@ -61,7 +61,8 @@ def generate_smc_signals(df):
 
     df['Signal'] = 0
     df['Stop_Loss'] = np.nan
-    df['Take_Profit'] = np.nan
+    df['Take_Profit'] = np.nan      # TP ratio 1:3
+    df['TP_Final'] = np.nan         # Tope del rango (FVG)
 
     active_sibi_mid = None
     active_bisi_mid = None
@@ -75,17 +76,31 @@ def generate_smc_signals(df):
         # Estrategia Bajista (Short)
         if df['BOS_Bearish'].iloc[i] and active_sibi_mid is not None:
             if df['Close'].iloc[i] < active_sibi_mid:
+                entry = float(df['Close'].iloc[i])
+                sl = float(df['High'].iloc[i-2:i+1].max())
+                risk = sl - entry
+                tp_1_3 = entry - (risk * 3)
+                tp_final = float(df['SIBI_bottom'].iloc[i])
+
                 df.at[df.index[i], 'Signal'] = -1
-                df.at[df.index[i], 'Stop_Loss'] = df['High'].iloc[i-2:i+1].max()
-                df.at[df.index[i], 'Take_Profit'] = df['prev_low'].iloc[i]
+                df.at[df.index[i], 'Stop_Loss'] = sl
+                df.at[df.index[i], 'Take_Profit'] = tp_1_3
+                df.at[df.index[i], 'TP_Final'] = tp_final
                 active_sibi_mid = None
 
         # Estrategia Alcista (Long)
         elif df['BOS_Bullish'].iloc[i] and active_bisi_mid is not None:
             if df['Close'].iloc[i] > active_bisi_mid:
+                entry = float(df['Close'].iloc[i])
+                sl = float(df['Low'].iloc[i-2:i+1].min())
+                risk = entry - sl
+                tp_1_3 = entry + (risk * 3)
+                tp_final = float(df['BISI_top'].iloc[i])
+
                 df.at[df.index[i], 'Signal'] = 1
-                df.at[df.index[i], 'Stop_Loss'] = df['Low'].iloc[i-2:i+1].min()
-                df.at[df.index[i], 'Take_Profit'] = df['prev_high'].iloc[i]
+                df.at[df.index[i], 'Stop_Loss'] = sl
+                df.at[df.index[i], 'Take_Profit'] = tp_1_3
+                df.at[df.index[i], 'TP_Final'] = tp_final
                 active_bisi_mid = None
 
     return df
@@ -116,23 +131,27 @@ def analizar_smc(simbolo):
 
         tipo = 'LONG' if signal == 1 else 'SHORT'
         sl = float(ult['Stop_Loss'])
-        tp = float(ult['Take_Profit'])
+        tp_1_3 = float(ult['Take_Profit'])
+        tp_final = float(ult['TP_Final'])
 
         if simbolo in operaciones_activas:
             return
 
         id_op = common.registrar_apertura(ESTRATEGIA, simbolo, tipo, precio_actual,
-                                          sl=sl, tp=tp)
+                                          sl=sl, tp=tp_final)
         if id_op is None:
             return
 
-        operaciones_activas[simbolo] = {'tipo': tipo, 'entrada': precio_actual, 'id': id_op}
+        operaciones_activas[simbolo] = {'tipo': tipo, 'entrada': precio_actual,
+                                         'sl': sl, 'tp': tp_final, 'id': id_op}
 
         emoji = '🚀' if tipo == 'LONG' else '📉'
         common.enviar_telegram(ESTRATEGIA, simbolo,
             f"{emoji} *SMC: SEÑAL {tipo}*\n"
             f"Par: {simbolo}\nPrecio: {precio_actual:.5f}\n"
-            f"SL: {sl:.5f}\nTP: {tp:.5f}\n"
+            f"SL: {sl:.5f}\n"
+            f"TP (1:3): {tp_1_3:.5f}\n"
+            f"TP Final: {tp_final:.5f}\n"
             f"ID: {id_op}")
 
     except Exception as e:
