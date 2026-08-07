@@ -277,7 +277,7 @@ def api_trade_detail(trade_id):
             'resultado': r[12]
         }
 
-        # Descargar OHLC desde Binance API
+        # Descargar OHLC desde Binance API (fallback: yfinance)
         ohlc = []
         if r[4] and r[2]:
             try:
@@ -286,45 +286,80 @@ def api_trade_detail(trade_id):
                 fecha_apertura = r[4]
                 fecha_cierre = r[10]
 
+                if fecha_cierre:
+                    duracion = (fecha_cierre - fecha_apertura).total_seconds() / 3600
+                else:
+                    duracion = min((datetime.now() - fecha_apertura).total_seconds() / 3600, 24)
+
+                if duracion <= 6:
+                    interval = '5m'
+                elif duracion <= 48:
+                    interval = '15m'
+                else:
+                    interval = '1h'
+
+                # Intentar Binance primero
                 if simbolo_binance:
-                    if fecha_cierre:
-                        duracion = (fecha_cierre - fecha_apertura).total_seconds() / 3600
-                    else:
-                        duracion = min((datetime.now() - fecha_apertura).total_seconds() / 3600, 24)
+                    try:
+                        start_ms = int((fecha_apertura - timedelta(minutes=30)).timestamp() * 1000)
+                        end_ms = int(((fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()).timestamp() * 1000)
 
-                    if duracion <= 6:
-                        interval = '5m'
-                    elif duracion <= 48:
-                        interval = '15m'
-                    else:
-                        interval = '1h'
+                        resp = requests.get(
+                            'https://api.binance.com/api/v3/klines',
+                            params={
+                                'symbol': simbolo_binance,
+                                'interval': interval,
+                                'startTime': start_ms,
+                                'endTime': end_ms,
+                                'limit': 1000
+                            },
+                            timeout=10
+                        )
 
-                    # Binance usa milisegundos
-                    start_ms = int((fecha_apertura - timedelta(minutes=30)).timestamp() * 1000)
-                    end_ms = int(((fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()).timestamp() * 1000)
+                        if resp.status_code == 200:
+                            candles = resp.json()
+                            for c in candles:
+                                ohlc.append({
+                                    'time': int(c[0] / 1000),
+                                    'open': round(float(c[1]), 5),
+                                    'high': round(float(c[2]), 5),
+                                    'low': round(float(c[3]), 5),
+                                    'close': round(float(c[4]), 5)
+                                })
+                            print(f"📊 OHLC Binance: {len(ohlc)} velas para {simbolo_binance}")
+                        else:
+                            print(f"⚠️ Binance respondió {resp.status_code}")
+                    except Exception as e_binance:
+                        print(f"⚠️ Binance falló: {e_binance}")
 
-                    url = 'https://api.binance.com/api/v3/klines'
-                    params = {
-                        'symbol': simbolo_binance,
-                        'interval': interval,
-                        'startTime': start_ms,
-                        'endTime': end_ms,
-                        'limit': 1000
-                    }
-
-                    resp = requests.get(url, params=params, timeout=10)
-                    if resp.status_code == 200:
-                        candles = resp.json()
-                        for c in candles:
-                            ohlc.append({
-                                'time': int(c[0] / 1000),
-                                'open': round(float(c[1]), 5),
-                                'high': round(float(c[2]), 5),
-                                'low': round(float(c[3]), 5),
-                                'close': round(float(c[4]), 5)
-                            })
+                # Fallback a yfinance si Binance no funcionó
+                if not ohlc:
+                    try:
+                        import yfinance as yf
+                        period = '5d' if duracion <= 24 else '30d'
+                        df = yf.download(simbolo_bot, period=period, interval=interval, progress=False)
+                        if not df.empty:
+                            if hasattr(df.columns, 'get_level_values'):
+                                df.columns = df.columns.get_level_values(0)
+                            fecha_ini = fecha_apertura - timedelta(minutes=30)
+                            fecha_fin = (fecha_cierre + timedelta(minutes=30)) if fecha_cierre else datetime.now()
+                            for idx, row in df.iterrows():
+                                vela_time = idx.to_pydatetime() if hasattr(idx, 'to_pydatetime') else idx
+                                if hasattr(vela_time, 'tzinfo') and vela_time.tzinfo is not None:
+                                    vela_time = vela_time.replace(tzinfo=None)
+                                if fecha_ini <= vela_time <= fecha_fin:
+                                    ohlc.append({
+                                        'time': int(idx.timestamp()),
+                                        'open': round(float(row['Open']), 5),
+                                        'high': round(float(row['High']), 5),
+                                        'low': round(float(row['Low']), 5),
+                                        'close': round(float(row['Close']), 5)
+                                    })
+                            print(f"📊 OHLC yfinance (fallback): {len(ohlc)} velas")
+                    except Exception as e_yf:
+                        print(f"⚠️ yfinance fallback falló: {e_yf}")
             except Exception as e:
-                print(f"⚠️ Error descargando OHLC de Binance para {r[2]}: {e}")
+                print(f"⚠️ Error descargando OHLC para {r[2]}: {e}")
 
         trade['ohlc'] = ohlc
         return jsonify(trade)
