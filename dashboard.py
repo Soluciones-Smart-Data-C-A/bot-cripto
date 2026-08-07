@@ -128,7 +128,8 @@ def api_stats():
                 COUNT(*) as total,
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
-                    ELSE precio_entrada - precio_salida END) as pnl
+                    ELSE precio_entrada - precio_salida END) as pnl,
+                SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas
             FROM historial_operaciones
             WHERE {where_sql}
             GROUP BY estrategia
@@ -143,7 +144,8 @@ def api_stats():
                 'total': estrat_total,
                 'wins': estrat_wins,
                 'win_rate': round((estrat_wins / estrat_total * 100) if estrat_total > 0 else 0, 1),
-                'pnl': round(float(r[3] or 0), 2)
+                'pnl': round(float(r[3] or 0), 2),
+                'abiertas': int(r[4] or 0)
             })
 
         return jsonify({

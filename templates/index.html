@@ -168,6 +168,7 @@
                             <th>Estrategia</th>
                             <th>Trades</th>
                             <th>Wins</th>
+                            <th>Abiertas</th>
                             <th>Win Rate</th>
                         </tr>
                     </thead>
@@ -440,6 +441,7 @@
                         <td>${e.estrategia}</td>
                         <td>${e.total}</td>
                         <td>${e.wins}</td>
+                        <td style="color:${e.abiertas > 0 ? '#58a6ff' : '#484f58'}">${e.abiertas}</td>
                         <td>
                             <span class="${e.win_rate >= 50 ? 'positive' : 'negative'}">${e.win_rate}%</span>
                             <div class="winrate-bar"><div class="winrate-fill" style="width:${e.win_rate}%"></div></div>
