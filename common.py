@@ -188,18 +188,19 @@ def obtener_trades_abiertos(estrategia, simbolo=None):
             cursor = conn.cursor()
             if simbolo:
                 cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
                     FROM historial_operaciones
                     WHERE estrategia = %s AND simbolo = %s AND resultado = 'ABIERTA'
                 """, (estrategia, simbolo))
             else:
                 cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
                     FROM historial_operaciones
                     WHERE estrategia = %s AND resultado = 'ABIERTA'
                 """, (estrategia,))
             trades = [{'id': row[0], 'simbolo': row[1], 'tipo': row[2],
-                       'entrada': row[3], 'sl': row[4], 'tp': row[5]}
+                       'entrada': row[3], 'sl': row[4], 'tp': row[5],
+                       'fecha_apertura': row[6]}
                       for row in cursor.fetchall()]
         except Error as e:
             print(f"❌ Error obteniendo trades abiertos: {e}")

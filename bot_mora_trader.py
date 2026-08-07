@@ -1,13 +1,14 @@
 """
 Script de Trading Automático - Estrategia Mora Trader (Cruce de EMAs)
 Basado en: https://www.youtube.com/shorts/roEy8Da2R1A
-Versión 2.6 - Cruce rápido de EMA 9 y 21 con SL/TP ratio 1:2.
+Versión 2.7 - Cruce rápido de EMA 9 y 21 con SL/TP ratio 1:3.
 Persistencia unificada en historial_operaciones vía common.
 """
 
 import sys
 import time
 import warnings
+from datetime import datetime
 
 import pandas as pd
 import yfinance as yf
@@ -18,6 +19,7 @@ warnings.filterwarnings('ignore')
 
 ESTRATEGIA = 'MORA_EMA_CROSS'
 operaciones_activas = {}
+MAX_HORAS_ABIERTO = 24  # Cerrar después de 24 horas
 
 def calcular_sl_tp(tipo, precio):
     """SL/TP ratio 1:3 (0.2% de stop, 0.6% de target)."""
@@ -59,7 +61,12 @@ def analizar_estrategia(simbolo):
                 sl, tp = calcular_sl_tp('LONG', precio_actual)
                 id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'LONG', precio_actual,
                                                   sl=sl, tp=tp, ema_9=e9_ult, ema_21=e21_ult)
-                operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual, 'id': id_op}
+                operaciones_activas[simbolo] = {
+                    'tipo': 'LONG',
+                    'entrada': precio_actual,
+                    'id': id_op,
+                    'fecha_apertura': datetime.now()
+                }
                 common.enviar_telegram(ESTRATEGIA, simbolo,
                     f"🚀 *MORA: CRUCE ALCISTA (9/21)*\n"
                     f"Par: {simbolo}\nPrecio: {precio_actual:.5f}\n"
@@ -72,24 +79,48 @@ def analizar_estrategia(simbolo):
                 sl, tp = calcular_sl_tp('SHORT', precio_actual)
                 id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'SHORT', precio_actual,
                                                   sl=sl, tp=tp, ema_9=e9_ult, ema_21=e21_ult)
-                operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual, 'id': id_op}
+                operaciones_activas[simbolo] = {
+                    'tipo': 'SHORT',
+                    'entrada': precio_actual,
+                    'id': id_op,
+                    'fecha_apertura': datetime.now()
+                }
                 common.enviar_telegram(ESTRATEGIA, simbolo,
                     f"📉 *MORA: CRUCE BAJISTA (9/21)*\n"
                     f"Par: {simbolo}\nPrecio: {precio_actual:.5f}\n"
                     f"SL: {sl:.5f}\nTP: {tp:.5f}\n"
                     f"ID: {id_op}")
 
-        # 3. Cierre por Cruce Contrario
+        # 3. Cierre de operaciones
         if simbolo in operaciones_activas:
             op = operaciones_activas[simbolo]
             cierre = False
+            res = ""
 
-            if op['tipo'] == 'LONG' and e9_ult < e21_ult:
-                cierre = True
-                res = "CRUCE CONTRARIO 📉"
-            elif op['tipo'] == 'SHORT' and e9_ult > e21_ult:
-                cierre = True
-                res = "CRUCE CONTRARIO 📈"
+            # 3.1 Verificar SL/TP
+            if op['tipo'] == 'LONG':
+                if precio_actual >= op.get('tp', float('inf')):
+                    cierre, res = True, "TP ✅"
+                elif precio_actual <= op.get('sl', 0):
+                    cierre, res = True, "SL ❌"
+            else:
+                if precio_actual <= op.get('tp', 0):
+                    cierre, res = True, "TP ✅"
+                elif precio_actual >= op.get('sl', float('inf')):
+                    cierre, res = True, "SL ❌"
+
+            # 3.2 Verificar tiempo máximo
+            if not cierre and 'fecha_apertura' in op:
+                horas_abierto = (datetime.now() - op['fecha_apertura']).total_seconds() / 3600
+                if horas_abierto >= MAX_HORAS_ABIERTO:
+                    cierre, res = True, f"TIEMPO MÁXIMO ({MAX_HORAS_ABIERTO}h) ⏱️"
+
+            # 3.3 Verificar cruce contrario
+            if not cierre:
+                if op['tipo'] == 'LONG' and e9_ult < e21_ult:
+                    cierre, res = True, "CRUCE CONTRARIO 📉"
+                elif op['tipo'] == 'SHORT' and e9_ult > e21_ult:
+                    cierre, res = True, "CRUCE CONTRARIO 📈"
 
             if cierre:
                 common.registrar_cierre(op['id'], precio_actual, res)
@@ -107,7 +138,12 @@ def ejecutar_bot():
     # Reanudar trades abiertos de BD
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:
-        operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'], 'id': t['id']}
+        operaciones_activas[t['simbolo']] = {
+            'tipo': t['tipo'],
+            'entrada': t['entrada'],
+            'id': t['id'],
+            'fecha_apertura': t.get('fecha_apertura')
+        }
     if trades:
         common.enviar_telegram(ESTRATEGIA, None,
             f"🔄 *TRADES REANUDADOS (MORA)*\n{len(trades)} operación(es) recuperada(s)")
