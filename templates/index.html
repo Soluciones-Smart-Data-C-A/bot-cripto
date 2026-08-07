@@ -298,11 +298,11 @@
                         <td>${t.simbolo}</td>
                         <td>${t.estrategia}</td>
                         <td><span class="badge ${tipoClass}">${t.tipo}</span></td>
-                        <td>${t.precio_entrada ? t.precio_entrada.toFixed(5) : '-'}</td>
-                        <td style="color:#f85149">${t.sl ? t.sl.toFixed(5) : '-'}</td>
-                        <td style="color:#3fb950">${t.tp ? t.tp.toFixed(5) : '-'}</td>
+                        <td>${t.precio_entrada ? t.precio_entrada.toFixed(2) : '-'}</td>
+                        <td style="color:#f85149">${t.sl ? t.sl.toFixed(2) : '-'}</td>
+                        <td style="color:#3fb950">${t.tp ? t.tp.toFixed(2) : '-'}</td>
                         <td>${rango}</td>
-                        <td>${t.precio_salida ? t.precio_salida.toFixed(5) : '-'}</td>
+                        <td>${t.precio_salida ? t.precio_salida.toFixed(2) : '-'}</td>
                         <td><span class="badge ${res.cls}">${res.text}</span></td>
                         <td><button class="btn-detail" onclick="showDetail(${t.id})">🔍</button></td>
                     </tr>
