@@ -95,6 +95,10 @@
         .btn-reset:hover { border-color: #f85149; }
         .btn-notify { color: #3fb950; }
         .btn-notify.muted { color: #f85149; }
+        .auto-refresh-group { display: flex; gap: 4px; }
+        .btn-refresh { color: #8b949e; font-size: 11px; padding: 4px 8px; }
+        .btn-refresh:hover { color: #58a6ff; border-color: #58a6ff; }
+        .btn-refresh.active { background: #58a6ff22; color: #58a6ff; border-color: #58a6ff; }
     </style>
 </head>
 <body>
@@ -135,6 +139,12 @@
                 </select>
             </div>
             <div style="display:flex;align-items:flex-end;gap:8px;margin-left:auto;">
+                <div class="auto-refresh-group">
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(1)" id="refresh-1">1m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(5)" id="refresh-5">5m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(30)" id="refresh-30">30m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(60)" id="refresh-60">1h</button>
+                </div>
                 <button class="btn-action btn-reset" onclick="resetFilters()">✕ Limpiar</button>
                 <button class="btn-action btn-notify" id="btn-notify" onclick="toggleNotifications()">🔔 Notificaciones</button>
             </div>
@@ -224,6 +234,21 @@
     <script>
         let chart = null;
         let candleSeries = null;
+        let autoRefreshInterval = null;
+
+        function setAutoRefresh(minutes) {
+            clearInterval(autoRefreshInterval);
+            document.querySelectorAll('.btn-refresh').forEach(b => b.classList.remove('active'));
+            if (autoRefreshInterval && minutes === 0) {
+                autoRefreshInterval = null;
+                return;
+            }
+            document.getElementById('refresh-' + minutes).classList.add('active');
+            autoRefreshInterval = setInterval(() => {
+                loadData();
+                loadSaldos();
+            }, minutes * 60 * 1000);
+        }
 
         // Datepicker
         const dpState = { desde: null, hasta: null, activePicker: null };
