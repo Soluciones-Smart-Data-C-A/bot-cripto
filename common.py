@@ -133,6 +133,13 @@ def inicializar_db():
             )
         """)
 
+        # Agregar columnas nuevas si la tabla ya existía sin ellas
+        for col, tipo in [('meta_diaria', 'FLOAT'), ('perdida_trade', 'FLOAT'), ('ganancia_trade', 'FLOAT')]:
+            try:
+                cursor.execute(f"ALTER TABLE saldos_diarios ADD COLUMN {col} {tipo}")
+            except Error:
+                pass  # La columna ya existe
+
         conn.commit()
     except Error as e:
         print(f"❌ Error inicializando tablas: {e}")
@@ -313,12 +320,19 @@ def registrar_saldo(chat_id, saldo):
     try:
         meta = calcular_meta_diaria(saldo)
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO saldos_diarios
-                (chat_id, saldo, meta_diaria, perdida_trade, ganancia_trade, fecha)
-            VALUES (%s, %s, %s, %s, %s, NOW())
-        """, (str(chat_id), saldo, meta['meta_diaria'],
-              meta['perdida_trade'], meta['ganancia_trade']))
+        try:
+            cursor.execute("""
+                INSERT INTO saldos_diarios
+                    (chat_id, saldo, meta_diaria, perdida_trade, ganancia_trade, fecha)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+            """, (str(chat_id), saldo, meta['meta_diaria'],
+                  meta['perdida_trade'], meta['ganancia_trade']))
+        except Error:
+            # Fallback si las columnas nuevas no existen aún
+            cursor.execute("""
+                INSERT INTO saldos_diarios (chat_id, saldo, fecha)
+                VALUES (%s, %s, NOW())
+            """, (str(chat_id), saldo))
         conn.commit()
         return meta
     except Error as e:
