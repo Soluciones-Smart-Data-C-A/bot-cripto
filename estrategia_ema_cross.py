@@ -70,10 +70,14 @@ def analizar_apertura_ny(simbolo):
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual, 'id': id_op}
+                    pos = common.calcular_posicion(precio_actual, sl, tp)
+                    pos_msg = ""
+                    if pos:
+                        pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
                         f"📉 *ENTRADA SHORT (NY OPEN)*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}\n"
                         f"SL: {sl:.5f}\nTP: {tp:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación superior.")
+                        f"Motivo: Recuperación tras manipulación superior.{pos_msg}")
 
             # Detectar Manipulación Inferior (Busca Compras)
             if precio_actual < rango['bajo']:
@@ -89,10 +93,14 @@ def analizar_apertura_ny(simbolo):
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual, 'id': id_op}
+                    pos = common.calcular_posicion(precio_actual, sl, tp)
+                    pos_msg = ""
+                    if pos:
+                        pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
                         f"🚀 *ENTRADA LONG (NY OPEN)*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}\n"
                         f"SL: {sl:.5f}\nTP: {tp:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación inferior.")
+                        f"Motivo: Recuperación tras manipulación inferior.{pos_msg}")
 
         # 3. Gestión de Cierre (Target: extremo opuesto del rango)
         if simbolo in operaciones_activas:

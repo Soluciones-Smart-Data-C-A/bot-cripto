@@ -39,6 +39,7 @@ def cmd_help(message):
         "Comandos:\n"
         "/saldo 73 - Registrar saldo\n"
         "/saldo - Ver último saldo y meta\n"
+        "/size entrada sl tp - Calcular posición\n"
         "/historial - Últimos 10 registros\n\n"
         "La meta diaria se calcula al 5% del saldo.\n"
         "Win rate asumido: 30% (3W / 7L en 10 trades).",
@@ -102,6 +103,43 @@ def cmd_historial(message):
         lines.append(f"• ${s['saldo']:,.2f} | Meta: ${s['meta_diaria']:.2f} | {s['fecha']}")
 
     bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+
+
+@bot.message_handler(commands=['size'])
+def cmd_size(message):
+    if not es_usuario_autorizado(message.chat.id):
+        return
+
+    parts = message.text.strip().split()
+    if len(parts) != 4:
+        bot.reply_to(message,
+            "📐 *Calcular posición*\n\n"
+            "Uso: /size entrada sl tp\n"
+            "Ejemplo: /size 64562.71 64433.58 64950.08",
+            parse_mode="Markdown")
+        return
+
+    try:
+        entrada = float(parts[1])
+        sl = float(parts[2])
+        tp = float(parts[3])
+    except ValueError:
+        bot.reply_to(message, "❌ Valores inválidos. Usa números.")
+        return
+
+    pos = common.calcular_posicion(entrada, sl, tp)
+    if not pos:
+        bot.reply_to(message, "❌ No hay saldo registrado o error en cálculo.\nUsa /saldo primero.")
+        return
+
+    bot.reply_to(message,
+        f"📐 *Posición calculada*\n\n"
+        f"Entrada: {entrada:.5f}\n"
+        f"SL: {sl:.5f} ({pos['sl_dist_pct']}%)\n"
+        f"TP: {tp:.5f} ({pos['tp_dist_pct']}%)\n\n"
+        f"💰 *Invertir: ${pos['usd_invertir']:.0f}*\n"
+        f"Red: -${pos['perdida']:.2f} | Win: +${pos['ganancia']:.2f}",
+        parse_mode="Markdown")
 
 
 if __name__ == '__main__':

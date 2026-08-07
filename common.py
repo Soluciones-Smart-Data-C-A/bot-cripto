@@ -356,6 +356,25 @@ def obtener_meta_diaria(chat_id):
     finally:
         conn.close()
 
+def calcular_posicion(precio_entrada, sl, tp):
+    """Calcula tamaño de posición basado en ganancia_trade del último saldo.
+    USD invertir = ganancia_trade / TP_distancia_%"""
+    meta = obtener_meta_diaria()
+    if not meta:
+        return None
+    tp_dist = abs(tp - precio_entrada) / precio_entrada
+    sl_dist = abs(precio_entrada - sl) / precio_entrada
+    if tp_dist == 0:
+        return None
+    usd = meta['ganancia_trade'] / tp_dist
+    return {
+        'usd_invertir': round(usd, 0),
+        'sl_dist_pct': round(sl_dist * 100, 3),
+        'tp_dist_pct': round(tp_dist * 100, 3),
+        'perdida': round(usd * sl_dist, 2),
+        'ganancia': round(usd * tp_dist, 2)
+    }
+
 def obtener_saldos(chat_id=None, limit=30):
     conn = get_db_connection()
     saldos = []
