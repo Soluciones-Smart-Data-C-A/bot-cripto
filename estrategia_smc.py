@@ -80,7 +80,14 @@ def generate_smc_signals(df):
                 sl = float(df['High'].iloc[i-2:i+1].max())
                 risk = sl - entry
                 tp_1_3 = entry - (risk * 3)
-                tp_final = float(df['SIBI_bottom'].iloc[i])
+                tp_fvg = float(df['SIBI_bottom'].iloc[i])
+
+                # Validar que TP FVG esté por debajo del entry para SHORT
+                if tp_fvg >= entry:
+                    tp_final = tp_1_3  # Usar TP 1:3 como fallback
+                else:
+                    # Usar el más cercano al entry (el MAYOR entre los dos)
+                    tp_final = max(tp_1_3, tp_fvg)
 
                 df.at[df.index[i], 'Signal'] = -1
                 df.at[df.index[i], 'Stop_Loss'] = sl
@@ -95,7 +102,14 @@ def generate_smc_signals(df):
                 sl = float(df['Low'].iloc[i-2:i+1].min())
                 risk = entry - sl
                 tp_1_3 = entry + (risk * 3)
-                tp_final = float(df['BISI_top'].iloc[i])
+                tp_fvg = float(df['BISI_top'].iloc[i])
+
+                # Validar que TP FVG esté por encima del entry para LONG
+                if tp_fvg <= entry:
+                    tp_final = tp_1_3  # Usar TP 1:3 como fallback
+                else:
+                    # Usar el más cercano al entry (el MENOR entre los dos)
+                    tp_final = min(tp_1_3, tp_fvg)
 
                 df.at[df.index[i], 'Signal'] = 1
                 df.at[df.index[i], 'Stop_Loss'] = sl

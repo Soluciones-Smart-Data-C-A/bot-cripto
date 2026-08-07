@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Cripto - Dashboard</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { font-size: 24px; margin-bottom: 20px; color: #58a6ff; }
+
+        /* Filtros */
+        .filters { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px; padding: 15px; background: #161b22; border-radius: 8px; border: 1px solid #30363d; }
+        .filters label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 4px; }
+        .filters select, .filters input { background: #0d1117; border: 1px solid #30363d; color: #e1e4e8; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+        .filters button { background: #238636; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .filters button:hover { background: #2ea043; }
+
+        /* Cards de métricas */
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .metric-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; text-align: center; }
+        .metric-card .value { font-size: 28px; font-weight: bold; margin: 5px 0; }
+        .metric-card .label { font-size: 12px; color: #8b949e; }
+        .positive { color: #3fb950; }
+        .negative { color: #f85149; }
+        .neutral { color: #58a6ff; }
+
+        /* Tabla de estrategias */
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 25px; }
+        .section h2 { font-size: 16px; margin-bottom: 15px; color: #e1e4e8; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #30363d; font-size: 14px; }
+        th { color: #8b949e; font-weight: 500; }
+        tr:hover { background: #1c2128; }
+
+        /* Botón de detalle */
+        .btn-detail { background: #1f6feb; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn-detail:hover { background: #388bfd; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 90%; max-width: 1000px; max-height: 90vh; overflow-y: auto; padding: 25px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { font-size: 18px; }
+        .modal-close { background: none; border: none; color: #8b949e; font-size: 24px; cursor: pointer; }
+        .modal-close:hover { color: #e1e4e8; }
+
+        /* Info del trade */
+        .trade-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; padding: 15px; background: #0d1117; border-radius: 8px; }
+        .trade-info .item { }
+        .trade-info .item .label { font-size: 11px; color: #8b949e; }
+        .trade-info .item .value { font-size: 14px; font-weight: 500; }
+
+        /* Gráfico */
+        #chart-container { width: 100%; height: 400px; background: #0d1117; border-radius: 8px; }
+
+        /* Win rate bar */
+        .winrate-bar { width: 100%; height: 8px; background: #30363d; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+        .winrate-fill { height: 100%; background: #3fb950; transition: width 0.3s; }
+
+        /* Badge */
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+        .badge-tp { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+        .badge-sl { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+        .badge-open { background: rgba(88, 166, 255, 0.2); color: #58a6ff; }
+        .badge-long { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+        .badge-short { background: rgba(248, 81, 73, 0.15); color: #f85149; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Bot Cripto - Dashboard</h1>
+
+        <!-- Filtros -->
+        <div class="filters">
+            <div>
+                <label>Estrategia</label>
+                <select id="filter-estrategia">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div>
+                <label>Símbolo</label>
+                <select id="filter-simbolo">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div>
+                <label>Desde</label>
+                <input type="date" id="filter-desde">
+            </div>
+            <div>
+                <label>Hasta</label>
+                <input type="date" id="filter-hasta">
+            </div>
+            <div>
+                <label>Resultado</label>
+                <select id="filter-resultado">
+                    <option value="">Todos</option>
+                    <option value="TP">TP ✅</option>
+                    <option value="SL">SL ❌</option>
+                    <option value="ABIERTA">Abiertas</option>
+                </select>
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+                <button onclick="applyFilters()">Filtrar</button>
+            </div>
+        </div>
+
+        <!-- Métricas -->
+        <div class="metrics">
+            <div class="metric-card">
+                <div class="label">Total Trades</div>
+                <div class="value neutral" id="stat-total">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Win Rate</div>
+                <div class="value" id="stat-winrate">-</div>
+                <div class="winrate-bar"><div class="winrate-fill" id="stat-winrate-bar"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Ganancia Total</div>
+                <div class="value" id="stat-ganancia">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Profit Factor</div>
+                <div class="value neutral" id="stat-pf">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Mejor Trade</div>
+                <div class="value positive" id="stat-mejor">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Peor Trade</div>
+                <div class="value negative" id="stat-peor">-</div>
+            </div>
+        </div>
+
+        <!-- Rendimiento por Estrategia -->
+        <div class="section">
+            <h2>📈 Rendimiento por Estrategia</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Estrategia</th>
+                        <th>Trades</th>
+                        <th>Wins</th>
+                        <th>Win Rate</th>
+                        <th>P&L</th>
+                    </tr>
+                </thead>
+                <tbody id="table-estrategias"></tbody>
+            </table>
+        </div>
+
+        <!-- Historial -->
+        <div class="section">
+            <h2>📋 Historial de Operaciones</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Par</th>
+                        <th>Estrategia</th>
+                        <th>Tipo</th>
+                        <th>Entrada</th>
+                        <th>Salida</th>
+                        <th>Resultado</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody id="table-trades"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal de detalle -->
+    <div class="modal" id="modal-detail">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Detalle Trade</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="trade-info" id="modal-trade-info"></div>
+            <div id="chart-container"></div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        let candleSeries = null;
+
+        // Cargar filtros al inicio
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFilters();
+            loadData();
+        });
+
+        async function loadFilters() {
+            const resp = await fetch('/api/filters');
+            const data = await resp.json();
+
+            const selEst = document.getElementById('filter-estrategia');
+            data.estrategias.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e;
+                opt.textContent = e;
+                selEst.appendChild(opt);
+            });
+
+            const selSim = document.getElementById('filter-simbolo');
+            data.simbolos.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                selSim.appendChild(opt);
+            });
+        }
+
+        function getFilters() {
+            return {
+                estrategia: document.getElementById('filter-estrategia').value,
+                simbolo: document.getElementById('filter-simbolo').value,
+                desde: document.getElementById('filter-desde').value,
+                hasta: document.getElementById('filter-hasta').value,
+                resultado: document.getElementById('filter-resultado').value
+            };
+        }
+
+        function buildQuery(params) {
+            const q = new URLSearchParams();
+            Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
+            return q.toString();
+        }
+
+        async function loadData() {
+            const params = getFilters();
+            const qs = buildQuery(params);
+
+            // Stats
+            const statsResp = await fetch('/api/stats?' + qs);
+            const stats = await statsResp.json();
+            document.getElementById('stat-total').textContent = stats.total;
+            document.getElementById('stat-winrate').textContent = stats.win_rate + '%';
+            document.getElementById('stat-winrate').className = 'value ' + (stats.win_rate >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-winrate-bar').style.width = stats.win_rate + '%';
+            document.getElementById('stat-ganancia').textContent = '$' + stats.ganancia_total;
+            document.getElementById('stat-ganancia').className = 'value ' + (stats.ganancia_total >= 0 ? 'positive' : 'negative');
+            document.getElementById('stat-pf').textContent = stats.profit_factor;
+            document.getElementById('stat-mejor').textContent = '$' + stats.mejor_trade;
+            document.getElementById('stat-peor').textContent = '$' + stats.peor_trade;
+
+            // Tabla estrategias
+            const tbodyEst = document.getElementById('table-estrategias');
+            tbodyEst.innerHTML = '';
+            stats.por_estrategia.forEach(e => {
+                tbodyEst.innerHTML += `
+                    <tr>
+                        <td>${e.estrategia}</td>
+                        <td>${e.total}</td>
+                        <td>${e.wins}</td>
+                        <td>
+                            <span class="${e.win_rate >= 50 ? 'positive' : 'negative'}">${e.win_rate}%</span>
+                            <div class="winrate-bar"><div class="winrate-fill" style="width:${e.win_rate}%"></div></div>
+                        </td>
+                        <td class="${e.pnl >= 0 ? 'positive' : 'negative'}">$${e.pnl}</td>
+                    </tr>
+                `;
+            });
+
+            // Trades
+            const tradesResp = await fetch('/api/trades?' + qs);
+            const trades = await tradesResp.json();
+
+            const tbodyTrades = document.getElementById('table-trades');
+            tbodyTrades.innerHTML = '';
+            trades.forEach(t => {
+                const isTp = t.resultado && t.resultado.includes('TP');
+                const isSl = t.resultado && t.resultado.includes('SL');
+                const isOpen = t.resultado === 'ABIERTA';
+                const badgeClass = isTp ? 'badge-tp' : isSl ? 'badge-sl' : 'badge-open';
+                const tipoClass = t.tipo === 'LONG' ? 'badge-long' : 'badge-short';
+
+                tbodyTrades.innerHTML += `
+                    <tr>
+                        <td>${t.id}</td>
+                        <td>${t.fecha_apertura || '-'}</td>
+                        <td>${t.simbolo}</td>
+                        <td>${t.estrategia}</td>
+                        <td><span class="badge ${tipoClass}">${t.tipo}</span></td>
+                        <td>${t.precio_entrada ? t.precio_entrada.toFixed(5) : '-'}</td>
+                        <td>${t.precio_salida ? t.precio_salida.toFixed(5) : '-'}</td>
+                        <td><span class="badge ${badgeClass}">${t.resultado || '-'}</span></td>
+                        <td><button class="btn-detail" onclick="showDetail(${t.id})">🔍</button></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function applyFilters() {
+            loadData();
+        }
+
+        async function showDetail(tradeId) {
+            const resp = await fetch('/api/trade/' + tradeId);
+            const trade = await resp.json();
+
+            document.getElementById('modal-title').textContent = `Trade #${trade.id} - ${trade.simbolo} ${trade.tipo}`;
+
+            // Info del trade
+            const isTp = trade.resultado && trade.resultado.includes('TP');
+            const info = document.getElementById('modal-trade-info');
+            info.innerHTML = `
+                <div class="item"><div class="label">Par</div><div class="value">${trade.simbolo}</div></div>
+                <div class="item"><div class="label">Tipo</div><div class="value"><span class="badge ${trade.tipo === 'LONG' ? 'badge-long' : 'badge-short'}">${trade.tipo}</span></div></div>
+                <div class="item"><div class="label">Entrada</div><div class="value">${trade.precio_entrada?.toFixed(5)}</div></div>
+                <div class="item"><div class="label">SL</div><div class="value negative">${trade.sl?.toFixed(5)}</div></div>
+                <div class="item"><div class="label">TP</div><div class="value positive">${trade.tp?.toFixed(5)}</div></div>
+                <div class="item"><div class="label">Salida</div><div class="value">${trade.precio_salida?.toFixed(5) || '-'}</div></div>
+                <div class="item"><div class="label">Resultado</div><div class="value"><span class="badge ${isTp ? 'badge-tp' : 'badge-sl'}">${trade.resultado}</span></div></div>
+                <div class="item"><div class="label">Apertura</div><div class="value">${trade.fecha_apertura}</div></div>
+                <div class="item"><div class="label">Cierre</div><div class="value">${trade.fecha_cierre || '-'}</div></div>
+            `;
+
+            // Renderizar gráfico de velas
+            renderChart(trade);
+
+            document.getElementById('modal-detail').classList.add('active');
+        }
+
+        function renderChart(trade) {
+            const container = document.getElementById('chart-container');
+            container.innerHTML = '';
+
+            if (!trade.ohlc || trade.ohlc.length === 0) {
+                container.innerHTML = '<p style="padding:20px;color:#8b949e;">No hay datos de velas disponibles</p>';
+                return;
+            }
+
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 400,
+                layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+                grid: { vertLines: { color: '#1c2128' }, horzLines: { color: '#1c2128' } },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#3fb950',
+                downColor: '#f85149',
+                borderUpColor: '#3fb950',
+                borderDownColor: '#f85149',
+                wickUpColor: '#3fb950',
+                wickDownColor: '#f85149'
+            });
+
+            candleSeries.setData(trade.ohlc);
+
+            // Línea de entrada
+            if (trade.precio_entrada) {
+                candleSeries.createPriceLine({
+                    price: trade.precio_entrada,
+                    color: '#58a6ff',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: 'Entry'
+                });
+            }
+
+            // Línea de SL
+            if (trade.sl) {
+                candleSeries.createPriceLine({
+                    price: trade.sl,
+                    color: '#f85149',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: 'SL'
+                });
+            }
+
+            // Línea de TP
+            if (trade.tp) {
+                candleSeries.createPriceLine({
+                    price: trade.tp,
+                    color: '#3fb950',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                    axisLabelVisible: true,
+                    title: 'TP'
+                });
+            }
+
+            chart.timeScale().fitContent();
+        }
+
+        function closeModal() {
+            document.getElementById('modal-detail').classList.remove('active');
+            if (chart) {
+                chart.remove();
+                chart = null;
+            }
+        }
+
+        // Cerrar modal con ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Responsive chart
+        window.addEventListener('resize', () => {
+            if (chart) {
+                const container = document.getElementById('chart-container');
+                chart.applyOptions({ width: container.clientWidth });
+            }
+        });
+    </script>
+</body>
+</html>

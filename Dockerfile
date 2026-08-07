@@ -24,6 +24,13 @@ COPY estrategia_crt_v2.py .
 COPY bot_mora_trader.py .
 COPY estrategia_ema_cross.py .
 COPY estrategia_smc.py .
+COPY dashboard.py .
+
+# Copiar templates
+COPY templates/ ./templates/
+
+# Exponer puerto del dashboard
+EXPOSE 5000
 
 # Ejecutar
-CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py
+CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py & python dashboard.py

@@ -46,10 +46,6 @@ def analizar_apertura_ny(simbolo):
                     'manipulado_alto': False,
                     'manipulado_bajo': False
                 }
-                common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"📌 *RANGO NY SET ({simbolo})*\n"
-                    f"Alto: {rangos_dia[simbolo]['alto']:.5f}\n"
-                    f"Bajo: {rangos_dia[simbolo]['bajo']:.5f}")
 
         # 2. Buscar Manipulación y Entrada (Post 9:45 AM NY)
         if simbolo in rangos_dia and (ahora_ny.hour >= 9 and ahora_ny.minute >= 45) and ahora_ny.hour < 12:
