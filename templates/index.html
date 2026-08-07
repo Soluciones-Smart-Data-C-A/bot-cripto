@@ -68,6 +68,25 @@
         .badge-open { background: rgba(88, 166, 255, 0.2); color: #58a6ff; }
         .badge-long { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
         .badge-short { background: rgba(248, 81, 73, 0.15); color: #f85149; }
+
+        /* Datepicker */
+        .dp-wrap { position: relative; }
+        .dp-input { cursor: pointer; }
+        .dp-calendar { display: none; position: absolute; top: 100%; left: 0; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; z-index: 100; min-width: 260px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        .dp-calendar.active { display: block; }
+        .dp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .dp-header button { background: none; border: none; color: #58a6ff; font-size: 16px; cursor: pointer; padding: 4px 8px; }
+        .dp-header button:hover { color: #e1e4e8; }
+        .dp-header span { font-size: 13px; font-weight: 500; }
+        .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .dp-grid .dp-dow { font-size: 10px; color: #8b949e; text-align: center; padding: 4px 0; }
+        .dp-grid .dp-day { font-size: 12px; text-align: center; padding: 6px 4px; border-radius: 4px; cursor: pointer; color: #e1e4e8; }
+        .dp-grid .dp-day:hover { background: #1f6feb; }
+        .dp-grid .dp-day.today { border: 1px solid #58a6ff; }
+        .dp-grid .dp-day.selected { background: #1f6feb; color: white; }
+        .dp-grid .dp-day.other-month { color: #484f58; }
+        .dp-clear { font-size: 11px; color: #8b949e; cursor: pointer; margin-top: 6px; display: inline-block; }
+        .dp-clear:hover { color: #f85149; }
     </style>
 </head>
 <body>
@@ -88,13 +107,15 @@
                     <option value="">Todos</option>
                 </select>
             </div>
-            <div>
+            <div class="dp-wrap">
                 <label>Desde</label>
-                <input type="date" id="filter-desde" onchange="applyFilters()">
+                <input type="text" id="filter-desde" class="dp-input" placeholder="Seleccionar fecha" readonly onclick="toggleDP('desde')" style="background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:8px 12px;border-radius:6px;font-size:14px;width:140px;cursor:pointer;">
+                <div class="dp-calendar" id="dp-desde"></div>
             </div>
-            <div>
+            <div class="dp-wrap">
                 <label>Hasta</label>
-                <input type="date" id="filter-hasta" onchange="applyFilters()">
+                <input type="text" id="filter-hasta" class="dp-input" placeholder="Seleccionar fecha" readonly onclick="toggleDP('hasta')" style="background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:8px 12px;border-radius:6px;font-size:14px;width:140px;cursor:pointer;">
+                <div class="dp-calendar" id="dp-hasta"></div>
             </div>
             <div>
                 <label>Resultado</label>
@@ -190,6 +211,101 @@
     <script>
         let chart = null;
         let candleSeries = null;
+
+        // Datepicker
+        const dpState = { desde: null, hasta: null, activePicker: null };
+
+        function toggleDP(which) {
+            const cal = document.getElementById('dp-' + which);
+            const isOpen = cal.classList.contains('active');
+            closeAllDP();
+            if (!isOpen) {
+                dpState.activePicker = which;
+                const currentDate = dpState[which] || new Date();
+                renderCalendar(which, currentDate.getFullYear(), currentDate.getMonth());
+                cal.classList.add('active');
+            }
+        }
+
+        function closeAllDP() {
+            document.querySelectorAll('.dp-calendar').forEach(c => c.classList.remove('active'));
+            dpState.activePicker = null;
+        }
+
+        function renderCalendar(which, year, month) {
+            const cal = document.getElementById('dp-' + which);
+            const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Ene'];
+            const dows = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            let startDay = firstDay.getDay() - 1;
+            if (startDay < 0) startDay = 6;
+
+            const today = new Date();
+            const selected = dpState[which];
+
+            let html = `<div class="dp-header">
+                <button onclick="navMonth('${which}', ${year}, ${month - 1})">◀</button>
+                <span>${months[month]} ${year}</span>
+                <button onclick="navMonth('${which}', ${year}, ${month + 1})">▶</button>
+            </div><div class="dp-grid">`;
+
+            dows.forEach(d => { html += `<div class="dp-dow">${d}</div>`; });
+
+            // Días del mes anterior
+            const prevMonth = new Date(year, month, 0);
+            for (let i = startDay - 1; i >= 0; i--) {
+                const day = prevMonth.getDate() - i;
+                html += `<div class="dp-day other-month">${day}</div>`;
+            }
+
+            // Días del mes actual
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+                const isSelected = selected && selected.getFullYear() === year && selected.getMonth() === month && selected.getDate() === d;
+                const cls = ['dp-day'];
+                if (isToday) cls.push('today');
+                if (isSelected) cls.push('selected');
+                html += `<div class="${cls.join(' ')}" onclick="selectDate('${which}', ${year}, ${month}, ${d})">${d}</div>`;
+            }
+
+            // Días del mes siguiente
+            const remaining = 42 - (startDay + lastDay.getDate());
+            for (let d = 1; d <= remaining; d++) {
+                html += `<div class="dp-day other-month">${d}</div>`;
+            }
+
+            html += '</div>';
+            html += `<div class="dp-clear" onclick="clearDate('${which}')">Limpiar</div>`;
+            cal.innerHTML = html;
+        }
+
+        function navMonth(which, year, month) {
+            if (month < 0) { year--; month = 11; }
+            if (month > 11) { year++; month = 0; }
+            renderCalendar(which, year, month);
+        }
+
+        function selectDate(which, year, month, day) {
+            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            dpState[which] = new Date(year, month, day);
+            document.getElementById('filter-' + which).value = dateStr;
+            closeAllDP();
+            applyFilters();
+        }
+
+        function clearDate(which) {
+            dpState[which] = null;
+            document.getElementById('filter-' + which).value = '';
+            closeAllDP();
+            applyFilters();
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dp-wrap')) closeAllDP();
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             loadFilters();
