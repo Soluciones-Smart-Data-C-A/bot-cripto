@@ -15,11 +15,9 @@
         .filters { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px; padding: 15px; background: #161b22; border-radius: 8px; border: 1px solid #30363d; }
         .filters label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 4px; }
         .filters select, .filters input { background: #0d1117; border: 1px solid #30363d; color: #e1e4e8; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
-        .filters button { background: #238636; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .filters button:hover { background: #2ea043; }
 
         /* Cards de métricas */
-        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .metric-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; text-align: center; }
         .metric-card .value { font-size: 28px; font-weight: bold; margin: 5px 0; }
         .metric-card .label { font-size: 12px; color: #8b949e; }
@@ -63,8 +61,8 @@
 
         /* Badge */
         .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
-        .badge-tp { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
-        .badge-sl { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+        .badge-win { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+        .badge-loss { background: rgba(248, 81, 73, 0.2); color: #f85149; }
         .badge-open { background: rgba(88, 166, 255, 0.2); color: #58a6ff; }
         .badge-long { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
         .badge-short { background: rgba(248, 81, 73, 0.15); color: #f85149; }
@@ -78,35 +76,32 @@
         <div class="filters">
             <div>
                 <label>Estrategia</label>
-                <select id="filter-estrategia">
+                <select id="filter-estrategia" onchange="applyFilters()">
                     <option value="">Todas</option>
                 </select>
             </div>
             <div>
                 <label>Símbolo</label>
-                <select id="filter-simbolo">
+                <select id="filter-simbolo" onchange="applyFilters()">
                     <option value="">Todos</option>
                 </select>
             </div>
             <div>
                 <label>Desde</label>
-                <input type="date" id="filter-desde">
+                <input type="date" id="filter-desde" onchange="applyFilters()">
             </div>
             <div>
                 <label>Hasta</label>
-                <input type="date" id="filter-hasta">
+                <input type="date" id="filter-hasta" onchange="applyFilters()">
             </div>
             <div>
                 <label>Resultado</label>
-                <select id="filter-resultado">
+                <select id="filter-resultado" onchange="applyFilters()">
                     <option value="">Todos</option>
-                    <option value="TP">TP ✅</option>
-                    <option value="SL">SL ❌</option>
+                    <option value="TP">Ganó</option>
+                    <option value="SL">Perdió</option>
                     <option value="ABIERTA">Abiertas</option>
                 </select>
-            </div>
-            <div style="display: flex; align-items: flex-end;">
-                <button onclick="applyFilters()">Filtrar</button>
             </div>
         </div>
 
@@ -122,26 +117,15 @@
                 <div class="winrate-bar"><div class="winrate-fill" id="stat-winrate-bar"></div></div>
             </div>
             <div class="metric-card">
-                <div class="label">Ganancia Total</div>
-                <div class="value" id="stat-ganancia">-</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Profit Factor</div>
-                <div class="value neutral" id="stat-pf">-</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Mejor Trade</div>
-                <div class="value positive" id="stat-mejor">-</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Peor Trade</div>
-                <div class="value negative" id="stat-peor">-</div>
+                <div class="label">Win Rate Global</div>
+                <div class="value" id="stat-winrate-global">-</div>
+                <div class="winrate-bar"><div class="winrate-fill" id="stat-winrate-global-bar"></div></div>
             </div>
         </div>
 
         <!-- Rendimiento por Estrategia -->
         <div class="section">
-            <h2>📈 Rendimiento por Estrategia</h2>
+            <h2>📈 Rendimiento por Estrategia (Filtrado)</h2>
             <table>
                 <thead>
                     <tr>
@@ -149,7 +133,6 @@
                         <th>Trades</th>
                         <th>Wins</th>
                         <th>Win Rate</th>
-                        <th>P&L</th>
                     </tr>
                 </thead>
                 <tbody id="table-estrategias"></tbody>
@@ -168,6 +151,7 @@
                         <th>Estrategia</th>
                         <th>Tipo</th>
                         <th>Entrada</th>
+                        <th>Rango</th>
                         <th>Salida</th>
                         <th>Resultado</th>
                         <th>Detalle</th>
@@ -194,7 +178,6 @@
         let chart = null;
         let candleSeries = null;
 
-        // Cargar filtros al inicio
         document.addEventListener('DOMContentLoaded', () => {
             loadFilters();
             loadData();
@@ -237,22 +220,32 @@
             return q.toString();
         }
 
+        function formatResult(resultado) {
+            if (!resultado || resultado === 'ABIERTA') return { text: 'Abierta', cls: 'badge-open' };
+            if (resultado.includes('TP') || resultado.includes('Ganó')) return { text: 'Ganó', cls: 'badge-win' };
+            if (resultado.includes('SL') || resultado.includes('Perdió')) return { text: 'Perdió', cls: 'badge-loss' };
+            if (resultado.includes('CORREGIDO')) return { text: 'Corregido', cls: 'badge-open' };
+            return { text: resultado, cls: 'badge-open' };
+        }
+
         async function loadData() {
             const params = getFilters();
             const qs = buildQuery(params);
 
-            // Stats
+            // Stats filtrados
             const statsResp = await fetch('/api/stats?' + qs);
             const stats = await statsResp.json();
             document.getElementById('stat-total').textContent = stats.total;
             document.getElementById('stat-winrate').textContent = stats.win_rate + '%';
             document.getElementById('stat-winrate').className = 'value ' + (stats.win_rate >= 50 ? 'positive' : 'negative');
             document.getElementById('stat-winrate-bar').style.width = stats.win_rate + '%';
-            document.getElementById('stat-ganancia').textContent = '$' + stats.ganancia_total;
-            document.getElementById('stat-ganancia').className = 'value ' + (stats.ganancia_total >= 0 ? 'positive' : 'negative');
-            document.getElementById('stat-pf').textContent = stats.profit_factor;
-            document.getElementById('stat-mejor').textContent = '$' + stats.mejor_trade;
-            document.getElementById('stat-peor').textContent = '$' + stats.peor_trade;
+
+            // Stats globales (sin filtros)
+            const globalResp = await fetch('/api/stats');
+            const globalStats = await globalResp.json();
+            document.getElementById('stat-winrate-global').textContent = globalStats.win_rate + '%';
+            document.getElementById('stat-winrate-global').className = 'value ' + (globalStats.win_rate >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-winrate-global-bar').style.width = globalStats.win_rate + '%';
 
             // Tabla estrategias
             const tbodyEst = document.getElementById('table-estrategias');
@@ -267,7 +260,6 @@
                             <span class="${e.win_rate >= 50 ? 'positive' : 'negative'}">${e.win_rate}%</span>
                             <div class="winrate-bar"><div class="winrate-fill" style="width:${e.win_rate}%"></div></div>
                         </td>
-                        <td class="${e.pnl >= 0 ? 'positive' : 'negative'}">$${e.pnl}</td>
                     </tr>
                 `;
             });
@@ -279,11 +271,11 @@
             const tbodyTrades = document.getElementById('table-trades');
             tbodyTrades.innerHTML = '';
             trades.forEach(t => {
-                const isTp = t.resultado && t.resultado.includes('TP');
-                const isSl = t.resultado && t.resultado.includes('SL');
-                const isOpen = t.resultado === 'ABIERTA';
-                const badgeClass = isTp ? 'badge-tp' : isSl ? 'badge-sl' : 'badge-open';
                 const tipoClass = t.tipo === 'LONG' ? 'badge-long' : 'badge-short';
+                const res = formatResult(t.resultado);
+                const rango = (t.rango_alto && t.rango_bajo)
+                    ? t.rango_alto.toFixed(2) + ' / ' + t.rango_bajo.toFixed(2)
+                    : '-';
 
                 tbodyTrades.innerHTML += `
                     <tr>
@@ -293,8 +285,9 @@
                         <td>${t.estrategia}</td>
                         <td><span class="badge ${tipoClass}">${t.tipo}</span></td>
                         <td>${t.precio_entrada ? t.precio_entrada.toFixed(5) : '-'}</td>
+                        <td>${rango}</td>
                         <td>${t.precio_salida ? t.precio_salida.toFixed(5) : '-'}</td>
-                        <td><span class="badge ${badgeClass}">${t.resultado || '-'}</span></td>
+                        <td><span class="badge ${res.cls}">${res.text}</span></td>
                         <td><button class="btn-detail" onclick="showDetail(${t.id})">🔍</button></td>
                     </tr>
                 `;
@@ -311,24 +304,26 @@
 
             document.getElementById('modal-title').textContent = `Trade #${trade.id} - ${trade.simbolo} ${trade.tipo}`;
 
-            // Info del trade
-            const isTp = trade.resultado && trade.resultado.includes('TP');
+            const res = formatResult(trade.resultado);
+            const rango = (trade.rango_alto && trade.rango_bajo)
+                ? trade.rango_alto.toFixed(5) + ' / ' + trade.rango_bajo.toFixed(5)
+                : '-';
+
             const info = document.getElementById('modal-trade-info');
             info.innerHTML = `
                 <div class="item"><div class="label">Par</div><div class="value">${trade.simbolo}</div></div>
                 <div class="item"><div class="label">Tipo</div><div class="value"><span class="badge ${trade.tipo === 'LONG' ? 'badge-long' : 'badge-short'}">${trade.tipo}</span></div></div>
                 <div class="item"><div class="label">Entrada</div><div class="value">${trade.precio_entrada?.toFixed(5)}</div></div>
+                <div class="item"><div class="label">Rango</div><div class="value">${rango}</div></div>
                 <div class="item"><div class="label">SL</div><div class="value negative">${trade.sl?.toFixed(5)}</div></div>
                 <div class="item"><div class="label">TP</div><div class="value positive">${trade.tp?.toFixed(5)}</div></div>
                 <div class="item"><div class="label">Salida</div><div class="value">${trade.precio_salida?.toFixed(5) || '-'}</div></div>
-                <div class="item"><div class="label">Resultado</div><div class="value"><span class="badge ${isTp ? 'badge-tp' : 'badge-sl'}">${trade.resultado}</span></div></div>
+                <div class="item"><div class="label">Resultado</div><div class="value"><span class="badge ${res.cls}">${res.text}</span></div></div>
                 <div class="item"><div class="label">Apertura</div><div class="value">${trade.fecha_apertura}</div></div>
                 <div class="item"><div class="label">Cierre</div><div class="value">${trade.fecha_cierre || '-'}</div></div>
             `;
 
-            // Renderizar gráfico de velas
             renderChart(trade);
-
             document.getElementById('modal-detail').classList.add('active');
         }
 
@@ -360,7 +355,6 @@
 
             candleSeries.setData(trade.ohlc);
 
-            // Línea de entrada
             if (trade.precio_entrada) {
                 candleSeries.createPriceLine({
                     price: trade.precio_entrada,
@@ -372,7 +366,6 @@
                 });
             }
 
-            // Línea de SL
             if (trade.sl) {
                 candleSeries.createPriceLine({
                     price: trade.sl,
@@ -384,7 +377,6 @@
                 });
             }
 
-            // Línea de TP
             if (trade.tp) {
                 candleSeries.createPriceLine({
                     price: trade.tp,
@@ -407,12 +399,10 @@
             }
         }
 
-        // Cerrar modal con ESC
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
 
-        // Responsive chart
         window.addEventListener('resize', () => {
             if (chart) {
                 const container = document.getElementById('chart-container');

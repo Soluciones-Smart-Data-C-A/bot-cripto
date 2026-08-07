@@ -193,7 +193,7 @@ def api_trades():
 
         cursor.execute(f"""
             SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
-                   sl, tp, fecha_cierre, precio_salida, resultado
+                   sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
             FROM historial_operaciones
             WHERE {where_sql}
             ORDER BY fecha_apertura DESC
@@ -211,9 +211,11 @@ def api_trades():
                 'precio_entrada': float(r[5]) if r[5] else None,
                 'sl': float(r[6]) if r[6] else None,
                 'tp': float(r[7]) if r[7] else None,
-                'fecha_cierre': r[8].strftime('%Y-%m-%d %H:%M') if r[8] else None,
-                'precio_salida': float(r[9]) if r[9] else None,
-                'resultado': r[10]
+                'rango_alto': float(r[8]) if r[8] else None,
+                'rango_bajo': float(r[9]) if r[9] else None,
+                'fecha_cierre': r[10].strftime('%Y-%m-%d %H:%M') if r[10] else None,
+                'precio_salida': float(r[11]) if r[11] else None,
+                'resultado': r[12]
             })
 
         return jsonify(trades)
@@ -237,7 +239,7 @@ def api_trade_detail(trade_id):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
-                   sl, tp, fecha_cierre, precio_salida, resultado
+                   sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
             FROM historial_operaciones
             WHERE id = %s
         """, (trade_id,))
@@ -255,9 +257,11 @@ def api_trade_detail(trade_id):
             'precio_entrada': float(r[5]) if r[5] else None,
             'sl': float(r[6]) if r[6] else None,
             'tp': float(r[7]) if r[7] else None,
-            'fecha_cierre': r[8].strftime('%Y-%m-%d %H:%M') if r[8] else None,
-            'precio_salida': float(r[9]) if r[9] else None,
-            'resultado': r[10]
+            'rango_alto': float(r[8]) if r[8] else None,
+            'rango_bajo': float(r[9]) if r[9] else None,
+            'fecha_cierre': r[10].strftime('%Y-%m-%d %H:%M') if r[10] else None,
+            'precio_salida': float(r[11]) if r[11] else None,
+            'resultado': r[12]
         }
 
         # Descargar OHLC para el gráfico de velas
