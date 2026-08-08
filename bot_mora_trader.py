@@ -164,6 +164,8 @@ def ejecutar_bot():
 
     while True:
         for activo in common.ACTIVOS:
+            if common.es_accion_o_etf(activo) and not common.horario_mercado():
+                continue
             analizar_estrategia(activo)
             time.sleep(2)
         # Escaneo cada 5 minutos para velas de 15m

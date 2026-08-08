@@ -155,6 +155,8 @@ def ejecutar_bot():
 
     while True:
         for activo in common.ACTIVOS:
+            if common.es_accion_o_etf(activo) and not common.horario_mercado():
+                continue
             analizar_apertura_ny(activo)
             time.sleep(1)
         time.sleep(60)

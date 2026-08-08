@@ -47,7 +47,26 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '')
 
 # Activos monitoreados por todas las estrategias
-ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD']
+ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD', 'SPY', 'QQQ', 'VT', 'VALE', 'PYPL', 'INTC']
+
+# Acciones y ETFs (ticker yfinance puro, sin -USD)
+ACCIONES_ETF = {'SPY', 'QQQ', 'VT', 'VALE', 'PYPL', 'INTC'}
+
+def es_accion_o_etf(simbolo):
+    return simbolo in ACCIONES_ETF
+
+def horario_mercado():
+    """Retorna True si el mercado de acciones US está abierto (9:30 AM - 4:00 PM ET)."""
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    ny_offset = timedelta(hours=-4)  # EDT
+    ny_time = now + ny_offset
+    weekday = ny_time.weekday()
+    if weekday >= 5:  # Sábado o Domingo
+        return False
+    market_open = ny_time.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = ny_time.replace(hour=16, minute=0, second=0, microsecond=0)
+    return market_open <= ny_time <= market_close
 
 def verificar_config():
     """Valida que las credenciales requeridas estén configuradas en el entorno."""
@@ -229,7 +248,8 @@ def obtener_trades_abiertos(estrategia, simbolo=None):
     return trades
 
 def cerrar_trades_trabados(estrategia, max_horas=24):
-    """Cierra automáticamente trades abiertos por más de X horas."""
+    """Cierra automáticamente trades abiertos por más de X horas.
+    Para acciones/ETF, solo cierra si el mercado está abierto."""
     import yfinance as yf
 
     conn = get_db_connection()
@@ -250,6 +270,10 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
 
         for t in trades:
             trade_id, simbolo, tipo, entrada, fecha = t
+
+            # Para acciones/ETF: no cerrar si el mercado está cerrado
+            if es_accion_o_etf(simbolo) and not horario_mercado():
+                continue
 
             # Obtener precio actual
             try:

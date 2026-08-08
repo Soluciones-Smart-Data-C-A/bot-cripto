@@ -89,6 +89,8 @@ class EstrategiaCRT:
 # ==========================================
 def chequear_entradas():
     for activo in common.ACTIVOS:
+        if common.es_accion_o_etf(activo) and not common.horario_mercado():
+            continue
         # Evitar duplicados en memoria
         if any(op['simbolo'] == activo for op in operaciones_activas):
             continue
