@@ -504,12 +504,12 @@
             document.getElementById('stat-winrate').className = 'value ' + (stats.win_rate >= 50 ? 'positive' : 'negative');
             document.getElementById('stat-winrate-bar').style.width = stats.win_rate + '%';
 
-            // Stats globales (sin filtros)
+            // Stats globales (sin filtros, incluye abiertos en win rate)
             const globalResp = await fetch('/api/stats');
             const globalStats = await globalResp.json();
-            document.getElementById('stat-winrate-global').textContent = globalStats.win_rate + '%';
-            document.getElementById('stat-winrate-global').className = 'value ' + (globalStats.win_rate >= 50 ? 'positive' : 'negative');
-            document.getElementById('stat-winrate-global-bar').style.width = globalStats.win_rate + '%';
+            document.getElementById('stat-winrate-global').textContent = globalStats.win_rate_global + '%';
+            document.getElementById('stat-winrate-global').className = 'value ' + (globalStats.win_rate_global >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-winrate-global-bar').style.width = globalStats.win_rate_global + '%';
 
             // Tabla estrategias
             const tbodyEst = document.getElementById('table-estrategias');

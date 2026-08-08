@@ -83,6 +83,7 @@ def api_stats():
                 COUNT(*) as total,
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas,
                 SUM(CASE WHEN resultado LIKE '%%TP%%'
                     THEN CASE
                         WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
@@ -113,12 +114,14 @@ def api_stats():
         total = row[0] or 0
         wins = row[1] or 0
         losses = row[2] or 0
-        ganancia_total = float(row[3] or 0)
-        perdida_total = float(row[4] or 0)
-        mejor_trade = float(row[5] or 0)
-        peor_trade = float(row[6] or 0)
+        abiertas = row[3] or 0
+        ganancia_total = float(row[4] or 0)
+        perdida_total = float(row[5] or 0)
+        mejor_trade = float(row[6] or 0)
+        peor_trade = float(row[7] or 0)
 
         win_rate = (wins / total * 100) if total > 0 else 0
+        win_rate_global = (wins / (wins + losses + abiertas) * 100) if (wins + losses + abiertas) > 0 else 0
         profit_factor = (ganancia_total / abs(perdida_total)) if perdida_total != 0 else 0
 
         # Estadísticas por estrategia (sin filtro de resultado para contar abiertas)
@@ -168,7 +171,9 @@ def api_stats():
             'total': total,
             'wins': wins,
             'losses': losses,
+            'abiertas': abiertas,
             'win_rate': round(win_rate, 1),
+            'win_rate_global': round(win_rate_global, 1),
             'ganancia_total': round(ganancia_total, 2),
             'perdida_total': round(perdida_total, 2),
             'profit_factor': round(profit_factor, 2),
