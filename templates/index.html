@@ -106,11 +106,45 @@
         .page-btn:hover { border-color: #58a6ff; color: #58a6ff; }
         .page-btn.active { background: #58a6ff22; color: #58a6ff; border-color: #58a6ff; }
         .page-dots { color: #484f58; padding: 4px 6px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 12px; }
+            h1 { font-size: 18px; }
+            .header-row { flex-direction: column; align-items: flex-start !important; gap: 12px; }
+            .auto-refresh-group { width: 100%; justify-content: flex-start; }
+            .filters { flex-direction: column; gap: 10px; }
+            .filters > div { width: 100%; }
+            .filters select, .filters input { width: 100%; }
+            .filters-buttons { flex-direction: column !important; width: 100%; gap: 8px !important; }
+            .filters-buttons .btn-action { width: 100%; text-align: center; }
+            .metrics { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .metric-card { padding: 12px; }
+            .metric-card .value { font-size: 22px; }
+            .row-2col { grid-template-columns: 1fr; }
+            .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .table-wrap table { min-width: 700px; }
+            th, td { padding: 8px; font-size: 12px; }
+            .section { padding: 12px; }
+            .section h2 { font-size: 14px; }
+            .pagination { flex-direction: column; gap: 10px; }
+            .modal-content { width: 95%; padding: 15px; }
+            .trade-info { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            #chart-container { height: 280px; }
+        }
+
+        @media (max-width: 480px) {
+            .metrics { grid-template-columns: 1fr 1fr; }
+            .metric-card .value { font-size: 18px; }
+            .auto-refresh-group { flex-wrap: wrap; }
+            .btn-refresh { flex: 1; text-align: center; }
+            .trade-info { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div class="header-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
             <h1 style="margin:0;">📊 Bot Cripto - Dashboard</h1>
             <div class="auto-refresh-group">
                 <button class="btn-action btn-refresh" onclick="setAutoRefresh(1)" id="refresh-1">1m</button>
@@ -153,7 +187,7 @@
                     <option value="ABIERTA">Abiertas</option>
                 </select>
             </div>
-            <div style="display:flex;align-items:flex-end;gap:8px;margin-left:auto;">
+            <div class="filters-buttons" style="display:flex;align-items:flex-end;gap:8px;margin-left:auto;">
                 <button class="btn-action btn-reset" onclick="resetFilters()">✕ Limpiar</button>
                 <button class="btn-action btn-notify" id="btn-notify" onclick="toggleNotifications()">🔔 Notificaciones</button>
             </div>
@@ -206,6 +240,7 @@
         <!-- Historial -->
         <div class="section">
             <h2>📋 Historial de Operaciones</h2>
+            <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
@@ -225,6 +260,7 @@
                 </thead>
                 <tbody id="table-trades"></tbody>
             </table>
+            </div>
             <div id="pagination" class="pagination"></div>
         </div>
     </div>
