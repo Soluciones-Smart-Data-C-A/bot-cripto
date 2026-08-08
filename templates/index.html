@@ -561,7 +561,6 @@
             dpState.hasta = null;
             closeAllDP();
             currentPage = 1;
-            lastTradeCount = 0;
             loadData();
         }
 
@@ -604,7 +603,6 @@
 
         // Pagination state
         let currentPage = 1;
-        let lastTradeCount = 0;
 
         async function loadData() {
             const params = getFilters();
@@ -649,16 +647,8 @@
                     `;
                 });
 
-                // Comparar count para refresco inteligente de tabla
-                const countResp = await fetch('/api/trades/count?' + qs);
-                const countData = await countResp.json();
-                const newCount = countData.count || 0;
-
-                if (newCount !== lastTradeCount) {
-                    lastTradeCount = newCount;
-                    if (currentPage > 1) currentPage = 1;
-                    await loadTrades(qs);
-                }
+                // Recargar tabla de historial (siempre, para reflejar cierres/cambios de estado)
+                await loadTrades(qs);
 
                 // Carrusel de abiertos
                 await loadOpenTrades();
@@ -777,7 +767,6 @@
 
         function applyFilters() {
             currentPage = 1;
-            lastTradeCount = 0;
             loadData();
         }
 
