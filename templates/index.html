@@ -38,6 +38,8 @@
         /* Botón de detalle */
         .btn-detail { background: #1f6feb; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .btn-detail:hover { background: #388bfd; }
+        .btn-close { background: #f85149; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 4px; }
+        .btn-close:hover { background: #da3633; }
 
         /* Modal */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
@@ -648,7 +650,12 @@
                         <td>${rango}</td>
                         <td>${t.precio_salida ? t.precio_salida.toFixed(2) : '-'}</td>
                         <td><span class="badge ${res.cls}">${res.text}</span></td>
-                        <td><button class="btn-detail" onclick="showDetail(${t.id})">🔍</button></td>
+                        <td>
+                            <button class="btn-detail" onclick="showDetail(${t.id})">🔍</button>
+                            ${t.resultado === 'ABIERTA'
+                                ? `<button class="btn-close" onclick="cerrarTrade(${t.id})">Cerrar</button>`
+                                : ''}
+                        </td>
                     </tr>
                 `;
             });
@@ -728,6 +735,23 @@
 
             lineSeries.setData(data);
             saldoChart.timeScale().fitContent();
+        }
+
+        async function cerrarTrade(tradeId) {
+            if (!confirm('¿Cerrar esta señal? Se tomará el precio actual.')) return;
+            try {
+                const resp = await fetch('/api/trade/' + tradeId + '/close', { method: 'POST' });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    alert('Error: ' + (data.error || 'No se pudo cerrar'));
+                    return;
+                }
+                alert(`Señal cerrada en ${data.precio_salida.toFixed(2)} (${data.resultado})`);
+                loadTrades();
+                loadOpenTrades();
+            } catch(e) {
+                alert('Error de conexión: ' + e);
+            }
         }
 
         async function showDetail(tradeId) {

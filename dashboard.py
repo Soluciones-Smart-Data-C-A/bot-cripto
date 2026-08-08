@@ -457,6 +457,91 @@ def api_trade_detail(trade_id):
 
 
 # ==========================================
+# API: CERRAR TRADE MANUALMENTE
+# ==========================================
+@app.route('/api/trade/<int:trade_id>/close', methods=['POST'])
+def api_close_trade(trade_id):
+    conn = common.get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a BD'}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, resultado
+            FROM historial_operaciones
+            WHERE id = %s
+        """, (trade_id,))
+        r = cursor.fetchone()
+
+        if not r:
+            return jsonify({'error': 'Trade no encontrado'}), 404
+
+        trade_id, estrategia, simbolo, tipo, entrada, sl, tp, resultado = r
+        if resultado != 'ABIERTA':
+            return jsonify({'error': 'La señal ya está cerrada'}), 400
+
+        # Precio actual (Binance spot, fallback yfinance)
+        precio_actual = None
+        try:
+            simbolo_binance = SYMBOL_MAP.get(simbolo)
+            if simbolo_binance:
+                resp = requests.get('https://api.binance.com/api/v3/ticker/price',
+                                    params={'symbol': simbolo_binance}, timeout=10)
+                if resp.status_code == 200:
+                    precio_actual = float(resp.json()['price'])
+        except Exception as e_binance:
+            print(f"⚠️ Binance price falló: {e_binance}")
+
+        if precio_actual is None:
+            try:
+                import yfinance as yf
+                df = yf.download(simbolo, period='1d', interval='1m', progress=False, auto_adjust=True)
+                if not df.empty:
+                    if hasattr(df.columns, 'get_level_values'):
+                        df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+                    precio_actual = float(df['Close'].iloc[-1])
+            except Exception as e_yf:
+                print(f"⚠️ yfinance price falló: {e_yf}")
+
+        if precio_actual is None:
+            precio_actual = float(entrada)
+
+        entrada = float(entrada)
+        sl = float(sl) if sl else None
+        tp = float(tp) if tp else None
+
+        if tipo == 'LONG':
+            if sl and precio_actual <= sl:
+                nuevo_resultado = 'SL'
+            elif tp and precio_actual >= tp:
+                nuevo_resultado = 'TP'
+            else:
+                nuevo_resultado = 'CERRADO_MANUAL'
+        else:  # SHORT
+            if sl and precio_actual >= sl:
+                nuevo_resultado = 'SL'
+            elif tp and precio_actual <= tp:
+                nuevo_resultado = 'TP'
+            else:
+                nuevo_resultado = 'CERRADO_MANUAL'
+
+        common.registrar_cierre(trade_id, precio_actual, nuevo_resultado)
+
+        return jsonify({
+            'ok': True,
+            'id': trade_id,
+            'precio_salida': precio_actual,
+            'resultado': nuevo_resultado
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ==========================================
 # API: TRADES ABIERTOS (Carrusel)
 # ==========================================
 @app.route('/api/open-trades')
