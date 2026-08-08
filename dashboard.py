@@ -177,6 +177,8 @@ def api_trades():
     desde = request.args.get('desde')
     hasta = request.args.get('hasta')
     resultado = request.args.get('resultado')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
 
     conn = common.get_db_connection()
     if not conn:
@@ -209,14 +211,18 @@ def api_trades():
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
+        cursor.execute(f"SELECT COUNT(*) FROM historial_operaciones WHERE {where_sql}", params)
+        total_count = cursor.fetchone()[0]
+
+        offset = (page - 1) * per_page
         cursor.execute(f"""
             SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
                    sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
             FROM historial_operaciones
             WHERE {where_sql}
             ORDER BY fecha_apertura DESC
-            LIMIT 200
-        """, params)
+            LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
 
         trades = []
         for r in cursor.fetchall():
@@ -236,7 +242,61 @@ def api_trades():
                 'resultado': r[12]
             })
 
-        return jsonify(trades)
+        return jsonify({
+            'trades': trades,
+            'total': total_count,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total_count + per_page - 1) // per_page
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/trades/count')
+def api_trades_count():
+    estrategia = request.args.get('estrategia')
+    simbolo = request.args.get('simbolo')
+    desde = request.args.get('desde')
+    hasta = request.args.get('hasta')
+    resultado = request.args.get('resultado')
+
+    conn = common.get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a BD'}), 500
+
+    try:
+        cursor = conn.cursor()
+        where_clauses = []
+        params = []
+
+        if estrategia:
+            where_clauses.append("estrategia = %s")
+            params.append(estrategia)
+        if simbolo:
+            where_clauses.append("simbolo = %s")
+            params.append(simbolo)
+        if desde:
+            where_clauses.append("fecha_apertura >= %s")
+            params.append(desde)
+        if hasta:
+            where_clauses.append("fecha_apertura <= %s")
+            params.append(hasta + " 23:59:59")
+        if resultado:
+            if resultado == 'TP':
+                where_clauses.append("resultado LIKE '%%TP%%'")
+            elif resultado == 'SL':
+                where_clauses.append("resultado LIKE '%%SL%%'")
+            elif resultado == 'ABIERTA':
+                where_clauses.append("resultado = 'ABIERTA'")
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        cursor.execute(f"SELECT COUNT(*) FROM historial_operaciones WHERE {where_sql}", params)
+        count = cursor.fetchone()[0]
+        return jsonify({'count': count})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -99,6 +99,13 @@
         .btn-refresh { color: #8b949e; font-size: 11px; padding: 4px 8px; }
         .btn-refresh:hover { color: #58a6ff; border-color: #58a6ff; }
         .btn-refresh.active { background: #58a6ff22; color: #58a6ff; border-color: #58a6ff; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-top: 8px; border-top: 1px solid #21262d; }
+        .page-info { color: #8b949e; font-size: 13px; }
+        .page-btns { display: flex; gap: 4px; }
+        .page-btn { background: none; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .page-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+        .page-btn.active { background: #58a6ff22; color: #58a6ff; border-color: #58a6ff; }
+        .page-dots { color: #484f58; padding: 4px 6px; }
     </style>
 </head>
 <body>
@@ -218,6 +225,7 @@
                 </thead>
                 <tbody id="table-trades"></tbody>
             </table>
+            <div id="pagination" class="pagination"></div>
         </div>
     </div>
 
@@ -401,6 +409,8 @@
             dpState.desde = null;
             dpState.hasta = null;
             closeAllDP();
+            currentPage = 1;
+            lastTradeCount = 0;
             loadData();
         }
 
@@ -441,11 +451,15 @@
             return { text: resultado, cls: 'badge-open' };
         }
 
+        // Pagination state
+        let currentPage = 1;
+        let lastTradeCount = 0;
+
         async function loadData() {
             const params = getFilters();
             const qs = buildQuery(params);
 
-            // Stats filtrados
+            // Stats filtrados (siempre se actualizan)
             const statsResp = await fetch('/api/stats?' + qs);
             const stats = await statsResp.json();
             document.getElementById('stat-total').textContent = stats.total;
@@ -478,9 +492,26 @@
                 `;
             });
 
-            // Trades
-            const tradesResp = await fetch('/api/trades?' + qs);
-            const trades = await tradesResp.json();
+            // Comparar count para refresco inteligente de tabla
+            const countResp = await fetch('/api/trades/count?' + qs);
+            const countData = await countResp.json();
+            const newCount = countData.count || 0;
+
+            if (newCount !== lastTradeCount) {
+                lastTradeCount = newCount;
+                if (currentPage > 1) currentPage = 1;
+                await loadTrades(qs);
+            }
+        }
+
+        async function loadTrades(qs) {
+            if (!qs) {
+                const params = getFilters();
+                qs = buildQuery(params);
+            }
+            const tradesResp = await fetch(`/api/trades?${qs}&page=${currentPage}&per_page=50`);
+            const data = await tradesResp.json();
+            const trades = data.trades || [];
 
             const tbodyTrades = document.getElementById('table-trades');
             tbodyTrades.innerHTML = '';
@@ -508,9 +539,37 @@
                     </tr>
                 `;
             });
+
+            renderPagination(data.total_pages, data.page, data.total);
+        }
+
+        function renderPagination(totalPages, page, total) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+            let html = `<span class="page-info">Página ${page} de ${totalPages} (${total} trades)</span><div class="page-btns">`;
+            if (page > 1) html += `<button class="page-btn" onclick="goToPage(${page - 1})">◀</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
+                    html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+                } else if (i === page - 3 || i === page + 3) {
+                    html += `<span class="page-dots">...</span>`;
+                }
+            }
+            if (page < totalPages) html += `<button class="page-btn" onclick="goToPage(${page + 1})">▶</button>`;
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            loadTrades();
         }
 
         function applyFilters() {
+            currentPage = 1;
+            lastTradeCount = 0;
             loadData();
         }
 
