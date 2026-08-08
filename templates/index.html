@@ -163,9 +163,37 @@
             .btn-refresh { flex: 1; text-align: center; }
             .trade-info { grid-template-columns: 1fr; }
         }
+        #top-loading-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            width: 0%;
+            background: linear-gradient(90deg, #58a6ff, #3fb950, #f0883e, #f85149);
+            background-size: 200% 100%;
+            z-index: 9999;
+            border-radius: 0 2px 2px 0;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        #top-loading-bar.active {
+            opacity: 1;
+            animation: loadingBar 1.2s linear infinite, loadingMove 1.2s ease-in-out infinite;
+        }
+        @keyframes loadingBar {
+            0% { background-position: 0% 0; }
+            100% { background-position: -200% 0; }
+        }
+        @keyframes loadingMove {
+            0% { width: 10%; }
+            50% { width: 55%; }
+            100% { width: 90%; }
+        }
     </style>
 </head>
 <body>
+    <div id="top-loading-bar"></div>
     <div class="container">
         <div class="header-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
             <h1 style="margin:0;">📊 Bot Cripto - Dashboard</h1>
@@ -319,6 +347,19 @@
         let candleSeries = null;
         let saldoChart = null;
         let autoRefreshInterval = null;
+        let loadingCount = 0;
+
+        function startLoading() {
+            loadingCount++;
+            document.getElementById('top-loading-bar').classList.add('active');
+        }
+
+        function stopLoading() {
+            loadingCount = Math.max(0, loadingCount - 1);
+            if (loadingCount === 0) {
+                document.getElementById('top-loading-bar').classList.remove('active');
+            }
+        }
 
         function setAutoRefresh(minutes) {
             clearInterval(autoRefreshInterval);
@@ -533,59 +574,65 @@
             const params = getFilters();
             const qs = buildQuery(params);
 
-            // Stats filtrados (sin filtros para métricas globales)
-            const statsResp = await fetch('/api/stats?' + qs);
-            const stats = await statsResp.json();
-            document.getElementById('stat-total').textContent = stats.total;
+            startLoading();
+            try {
+                // Stats filtrados (sin filtros para métricas globales)
+                const statsResp = await fetch('/api/stats?' + qs);
+                const stats = await statsResp.json();
+                document.getElementById('stat-total').textContent = stats.total;
 
-            // Exitosas globales
-            document.getElementById('stat-exitosas-globales').textContent = stats.exitosas_globales + '%';
-            document.getElementById('stat-exitosas-globales').className = 'value ' + (stats.exitosas_globales >= 50 ? 'positive' : 'negative');
-            document.getElementById('stat-exitosas-globales-bar').style.width = stats.exitosas_globales + '%';
+                // Exitosas globales
+                document.getElementById('stat-exitosas-globales').textContent = stats.exitosas_globales + '%';
+                document.getElementById('stat-exitosas-globales').className = 'value ' + (stats.exitosas_globales >= 50 ? 'positive' : 'negative');
+                document.getElementById('stat-exitosas-globales-bar').style.width = stats.exitosas_globales + '%';
 
-            // Exitosas del día
-            document.getElementById('stat-exitosas-dia').textContent = stats.exitosas_dia + '%';
-            document.getElementById('stat-exitosas-dia').className = 'value ' + (stats.exitosas_dia >= 50 ? 'positive' : 'negative');
-            document.getElementById('stat-exitosas-dia-bar').style.width = stats.exitosas_dia + '%';
+                // Exitosas del día
+                document.getElementById('stat-exitosas-dia').textContent = stats.exitosas_dia + '%';
+                document.getElementById('stat-exitosas-dia').className = 'value ' + (stats.exitosas_dia >= 50 ? 'positive' : 'negative');
+                document.getElementById('stat-exitosas-dia-bar').style.width = stats.exitosas_dia + '%';
 
-            // Mejor par + estrategia
-            document.getElementById('stat-mejor-par').textContent =
-                stats.mejor_estrategia + ' + ' + stats.mejor_activo;
+                // Mejor par + estrategia
+                document.getElementById('stat-mejor-par').textContent =
+                    stats.mejor_estrategia + ' + ' + stats.mejor_activo;
 
-            // Tabla estrategias
-            const tbodyEst = document.getElementById('table-estrategias');
-            tbodyEst.innerHTML = '';
-            stats.por_estrategia.forEach(e => {
-                tbodyEst.innerHTML += `
-                    <tr>
-                        <td>${e.estrategia}</td>
-                        <td>${e.total}</td>
-                        <td>${e.wins}</td>
-                        <td style="color:${e.abiertas > 0 ? '#58a6ff' : '#484f58'}">${e.abiertas}</td>
-                        <td>
-                            <span class="${e.win_rate >= 50 ? 'positive' : 'negative'}">${e.win_rate}%</span>
-                            <div class="winrate-bar"><div class="winrate-fill" style="width:${e.win_rate}%"></div></div>
-                        </td>
-                    </tr>
-                `;
-            });
+                // Tabla estrategias
+                const tbodyEst = document.getElementById('table-estrategias');
+                tbodyEst.innerHTML = '';
+                stats.por_estrategia.forEach(e => {
+                    tbodyEst.innerHTML += `
+                        <tr>
+                            <td>${e.estrategia}</td>
+                            <td>${e.total}</td>
+                            <td>${e.wins}</td>
+                            <td style="color:${e.abiertas > 0 ? '#58a6ff' : '#484f58'}">${e.abiertas}</td>
+                            <td>
+                                <span class="${e.win_rate >= 50 ? 'positive' : 'negative'}">${e.win_rate}%</span>
+                                <div class="winrate-bar"><div class="winrate-fill" style="width:${e.win_rate}%"></div></div>
+                            </td>
+                        </tr>
+                    `;
+                });
 
-            // Comparar count para refresco inteligente de tabla
-            const countResp = await fetch('/api/trades/count?' + qs);
-            const countData = await countResp.json();
-            const newCount = countData.count || 0;
+                // Comparar count para refresco inteligente de tabla
+                const countResp = await fetch('/api/trades/count?' + qs);
+                const countData = await countResp.json();
+                const newCount = countData.count || 0;
 
-            if (newCount !== lastTradeCount) {
-                lastTradeCount = newCount;
-                if (currentPage > 1) currentPage = 1;
-                await loadTrades(qs);
+                if (newCount !== lastTradeCount) {
+                    lastTradeCount = newCount;
+                    if (currentPage > 1) currentPage = 1;
+                    await loadTrades(qs);
+                }
+
+                // Carrusel de abiertos
+                await loadOpenTrades();
+            } finally {
+                stopLoading();
             }
-
-            // Carrusel de abiertos
-            loadOpenTrades();
         }
 
         async function loadOpenTrades() {
+            startLoading();
             try {
                 const resp = await fetch('/api/open-trades');
                 const data = await resp.json();
@@ -619,6 +666,9 @@
                     `;
                 });
             } catch(e) {}
+            finally {
+                stopLoading();
+            }
         }
 
         async function loadTrades(qs) {
@@ -696,47 +746,52 @@
         }
 
         async function loadSaldos() {
-            const resp = await fetch('/api/saldos?limit=60');
-            const saldos = await resp.json();
+            startLoading();
+            try {
+                const resp = await fetch('/api/saldos?limit=60');
+                const saldos = await resp.json();
 
-            if (saldos.length === 0) {
-                document.getElementById('saldo-chart-container').innerHTML =
-                    '<p style="padding:20px;color:#8b949e;">No hay saldos registrados. Envía /saldo desde Telegram.</p>';
-                return;
+                if (saldos.length === 0) {
+                    document.getElementById('saldo-chart-container').innerHTML =
+                        '<p style="padding:20px;color:#8b949e;">No hay saldos registrados. Envía /saldo desde Telegram.</p>';
+                    return;
+                }
+
+                const ultimo = saldos[0];
+                document.getElementById('saldo-ultimo').textContent =
+                    `Último saldo: $${ultimo.saldo.toLocaleString()} - ${ultimo.fecha}`;
+
+                const sorted = saldos.reverse();
+
+                if (saldoChart) {
+                    saldoChart.remove();
+                    saldoChart = null;
+                }
+
+                saldoChart = LightweightCharts.createChart(
+                    document.getElementById('saldo-chart-container'), {
+                    width: document.getElementById('saldo-chart-container').clientWidth,
+                    height: 250,
+                    layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+                    grid: { vertLines: { color: '#1c2128' }, horzLines: { color: '#1c2128' } },
+                    timeScale: { timeVisible: false }
+                });
+
+                const lineSeries = saldoChart.addLineSeries({
+                    color: '#58a6ff',
+                    lineWidth: 2,
+                });
+
+                const data = sorted.map(s => ({
+                    time: s.fecha.split(' ')[0],
+                    value: s.saldo
+                }));
+
+                lineSeries.setData(data);
+                saldoChart.timeScale().fitContent();
+            } finally {
+                stopLoading();
             }
-
-            const ultimo = saldos[0];
-            document.getElementById('saldo-ultimo').textContent =
-                `Último saldo: $${ultimo.saldo.toLocaleString()} - ${ultimo.fecha}`;
-
-            const sorted = saldos.reverse();
-
-            if (saldoChart) {
-                saldoChart.remove();
-                saldoChart = null;
-            }
-
-            saldoChart = LightweightCharts.createChart(
-                document.getElementById('saldo-chart-container'), {
-                width: document.getElementById('saldo-chart-container').clientWidth,
-                height: 250,
-                layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
-                grid: { vertLines: { color: '#1c2128' }, horzLines: { color: '#1c2128' } },
-                timeScale: { timeVisible: false }
-            });
-
-            const lineSeries = saldoChart.addLineSeries({
-                color: '#58a6ff',
-                lineWidth: 2,
-            });
-
-            const data = sorted.map(s => ({
-                time: s.fecha.split(' ')[0],
-                value: s.saldo
-            }));
-
-            lineSeries.setData(data);
-            saldoChart.timeScale().fitContent();
         }
 
         async function cerrarTrade(tradeId) {
