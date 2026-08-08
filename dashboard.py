@@ -456,6 +456,95 @@ def api_trade_detail(trade_id):
 
 
 # ==========================================
+# API: TRADES ABIERTOS (Carrusel)
+# ==========================================
+@app.route('/api/open-trades')
+def api_open_trades():
+    conn = common.get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a BD'}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
+            FROM historial_operaciones
+            WHERE resultado = 'ABIERTA'
+            ORDER BY fecha_apertura DESC
+        """)
+        trades = []
+        for r in cursor.fetchall():
+            trade = {
+                'id': r[0],
+                'estrategia': r[1],
+                'simbolo': r[2],
+                'tipo': r[3],
+                'precio_entrada': float(r[4]) if r[4] else 0,
+                'sl': float(r[5]) if r[5] else 0,
+                'tp': float(r[6]) if r[6] else 0,
+                'fecha_apertura': r[7].strftime('%Y-%m-%d %H:%M') if r[7] else None,
+            }
+
+            # Obtener precio actual
+            try:
+                import yfinance as yf
+                df = yf.download(trade['simbolo'], period='1d', interval='1m', progress=False, auto_adjust=True)
+                if not df.empty:
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df = df.xs(trade['simbolo'], axis=1, level=1, drop_level=True).copy()
+                    precio_actual = float(df['Close'].iloc[-1])
+                else:
+                    precio_actual = trade['precio_entrada']
+            except Exception:
+                precio_actual = trade['precio_entrada']
+
+            trade['precio_actual'] = round(precio_actual, 5)
+
+            # Calcular dirección (green/red)
+            sl = trade['sl']
+            tp = trade['tp']
+            entrada = trade['precio_entrada']
+            tipo = trade['tipo']
+
+            if tipo == 'LONG':
+                rango_total = tp - sl
+                if rango_total > 0:
+                    position = (precio_actual - sl) / rango_total
+                else:
+                    position = 0.5
+            else:  # SHORT
+                rango_total = sl - tp
+                if rango_total > 0:
+                    position = (sl - precio_actual) / rango_total
+                else:
+                    position = 0.5
+
+            if position > 0.5:
+                trade['direccion'] = 'green'
+            elif position < 0.5:
+                trade['direccion'] = 'red'
+            else:
+                trade['direccion'] = 'neutral'
+
+            # PnL %
+            if tipo == 'LONG' and entrada > 0:
+                trade['pnl_pct'] = round((precio_actual - entrada) / entrada * 100, 2)
+            elif tipo == 'SHORT' and entrada > 0:
+                trade['pnl_pct'] = round((entrada - precio_actual) / entrada * 100, 2)
+            else:
+                trade['pnl_pct'] = 0
+
+            trades.append(trade)
+
+        return jsonify({'trades': trades, 'total': len(trades)})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ==========================================
 # API: FILTROS
 # ==========================================
 @app.route('/api/filters')
