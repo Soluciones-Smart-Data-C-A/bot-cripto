@@ -5,10 +5,11 @@ Flask app para visualizar trades, métricas y gráficos de velas.
 
 import os
 import sys
+import time
+import threading
 from datetime import datetime, timedelta
 
 import requests
-import pandas as pd
 from flask import Flask, jsonify, render_template, request
 
 # Agregar directorio actual al path para importar common
@@ -32,6 +33,53 @@ BINANCE_INTERVALS = {
     '15m': '15m',
     '1h': '1h',
 }
+
+
+# ==========================================
+# HELPERS DE PRECIO Y CIERRE
+# ==========================================
+def obtener_precio_actual(simbolo):
+    """Precio real del símbolo: Binance spot (si está mapeado) con fallback a yfinance."""
+    precio = None
+    try:
+        simbolo_binance = SYMBOL_MAP.get(simbolo)
+        if simbolo_binance:
+            resp = requests.get('https://api.binance.com/api/v3/ticker/price',
+                                params={'symbol': simbolo_binance}, timeout=10)
+            if resp.status_code == 200:
+                precio = float(resp.json()['price'])
+    except Exception as e_binance:
+        print(f"⚠️ Binance price falló para {simbolo}: {e_binance}")
+
+    if precio is None:
+        try:
+            import yfinance as yf
+            df = yf.download(simbolo, period='1d', interval='1m', progress=False, auto_adjust=True)
+            if not df.empty:
+                if hasattr(df.columns, 'get_level_values'):
+                    df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
+                precio = float(df['Close'].iloc[-1])
+        except Exception as e_yf:
+            print(f"⚠️ yfinance price falló para {simbolo}: {e_yf}")
+
+    return precio
+
+
+def resultado_sl_tp(tipo, precio, sl, tp):
+    """Determina si el precio tocó SL o TP. Devuelve 'TP', 'SL' o None."""
+    sl = float(sl) if sl else None
+    tp = float(tp) if tp else None
+    if tipo == 'LONG':
+        if sl and precio <= sl:
+            return 'SL'
+        if tp and precio >= tp:
+            return 'TP'
+    else:  # SHORT
+        if sl and precio >= sl:
+            return 'SL'
+        if tp and precio <= tp:
+            return 'TP'
+    return None
 
 
 # ==========================================
@@ -481,50 +529,11 @@ def api_close_trade(trade_id):
         if resultado != 'ABIERTA':
             return jsonify({'error': 'La señal ya está cerrada'}), 400
 
-        # Precio actual (Binance spot, fallback yfinance)
-        precio_actual = None
-        try:
-            simbolo_binance = SYMBOL_MAP.get(simbolo)
-            if simbolo_binance:
-                resp = requests.get('https://api.binance.com/api/v3/ticker/price',
-                                    params={'symbol': simbolo_binance}, timeout=10)
-                if resp.status_code == 200:
-                    precio_actual = float(resp.json()['price'])
-        except Exception as e_binance:
-            print(f"⚠️ Binance price falló: {e_binance}")
-
-        if precio_actual is None:
-            try:
-                import yfinance as yf
-                df = yf.download(simbolo, period='1d', interval='1m', progress=False, auto_adjust=True)
-                if not df.empty:
-                    if hasattr(df.columns, 'get_level_values'):
-                        df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
-                    precio_actual = float(df['Close'].iloc[-1])
-            except Exception as e_yf:
-                print(f"⚠️ yfinance price falló: {e_yf}")
-
+        precio_actual = obtener_precio_actual(simbolo)
         if precio_actual is None:
             precio_actual = float(entrada)
 
-        entrada = float(entrada)
-        sl = float(sl) if sl else None
-        tp = float(tp) if tp else None
-
-        if tipo == 'LONG':
-            if sl and precio_actual <= sl:
-                nuevo_resultado = 'SL'
-            elif tp and precio_actual >= tp:
-                nuevo_resultado = 'TP'
-            else:
-                nuevo_resultado = 'CERRADO_MANUAL'
-        else:  # SHORT
-            if sl and precio_actual >= sl:
-                nuevo_resultado = 'SL'
-            elif tp and precio_actual <= tp:
-                nuevo_resultado = 'TP'
-            else:
-                nuevo_resultado = 'CERRADO_MANUAL'
+        nuevo_resultado = resultado_sl_tp(tipo, precio_actual, sl, tp) or 'CERRADO_MANUAL'
 
         common.registrar_cierre(trade_id, precio_actual, nuevo_resultado)
 
@@ -571,18 +580,9 @@ def api_open_trades():
                 'fecha_apertura': r[7].strftime('%Y-%m-%d %H:%M') if r[7] else None,
             }
 
-            # Obtener precio actual
-            try:
-                import yfinance as yf
-                df = yf.download(trade['simbolo'], period='1d', interval='1m', progress=False, auto_adjust=True)
-                if not df.empty:
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df = df.xs(trade['simbolo'], axis=1, level=1, drop_level=True).copy()
-                    precio_actual = float(df['Close'].iloc[-1])
-                else:
-                    precio_actual = trade['precio_entrada']
-            except Exception as e:
-                print(f"⚠️ Error obteniendo precio actual de {trade['simbolo']}: {e}")
+            # Obtener precio actual (Binance spot, fallback yfinance)
+            precio_actual = obtener_precio_actual(trade['simbolo'])
+            if precio_actual is None:
                 precio_actual = trade['precio_entrada']
 
             trade['precio_actual'] = round(precio_actual, 5)
@@ -692,8 +692,73 @@ def api_notifications_toggle():
 
 
 # ==========================================
+# WATCHDOG: CIERRE AUTOMÁTICO DE SEÑALES
+# ==========================================
+WATCHDOG_INTERVAL = 30  # segundos
+
+def vigilar_cierres():
+    """Cierra automáticamente trades abiertos que hayan tocado SL/TP."""
+    conn = common.get_db_connection()
+    if not conn:
+        return
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp
+            FROM historial_operaciones
+            WHERE resultado = 'ABIERTA'
+        """)
+        trades = cursor.fetchall()
+
+        for r in trades:
+            trade_id, estrategia, simbolo, tipo, entrada, sl, tp = r
+            try:
+                # Para acciones/ETF: no cerrar si el mercado está cerrado
+                if common.es_accion_o_etf(simbolo) and not common.horario_mercado():
+                    continue
+
+                precio_actual = obtener_precio_actual(simbolo)
+                if precio_actual is None:
+                    continue
+
+                resultado = resultado_sl_tp(tipo, precio_actual, sl, tp)
+                if not resultado:
+                    continue
+
+                common.registrar_cierre(trade_id, precio_actual, resultado)
+                print(f"🏁 [watchdog] Cierre automático {simbolo} #{trade_id}: {resultado} @ {precio_actual:.5f}")
+
+                common.enviar_telegram(estrategia, simbolo,
+                    f"🏁 *CIERRE AUTOMÁTICO ({estrategia})*\n"
+                    f"Par: {simbolo}\nMotivo: {resultado}\n"
+                    f"Precio: {precio_actual:.5f}\nID: {trade_id}")
+            except Exception as e:
+                print(f"⚠️ [watchdog] Error cerrando {simbolo} #{trade_id}: {e}")
+    except Exception as e:
+        print(f"⚠️ [watchdog] Error general: {e}")
+    finally:
+        conn.close()
+
+
+def iniciar_watchdog():
+    def loop():
+        time.sleep(10)  # espera inicial
+        while True:
+            try:
+                vigilar_cierres()
+            except Exception as e:
+                print(f"⚠️ [watchdog] Fallo en ciclo: {e}")
+            time.sleep(WATCHDOG_INTERVAL)
+
+    t = threading.Thread(target=loop, daemon=True, name='watchdog-cierres')
+    t.start()
+
+
+# ==========================================
 # MAIN
 # ==========================================
 if __name__ == '__main__':
     print("📊 Dashboard Bot Cripto - http://localhost:5000")
+    iniciar_watchdog()
     app.run(host='0.0.0.0', port=5000, debug=False)
