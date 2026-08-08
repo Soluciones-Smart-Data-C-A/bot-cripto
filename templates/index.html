@@ -200,14 +200,18 @@
                 <div class="value neutral" id="stat-total">-</div>
             </div>
             <div class="metric-card">
-                <div class="label">Win Rate</div>
-                <div class="value" id="stat-winrate">-</div>
-                <div class="winrate-bar"><div class="winrate-fill" id="stat-winrate-bar"></div></div>
+                <div class="label">Exitosas Globales</div>
+                <div class="value" id="stat-exitosas-globales">-</div>
+                <div class="winrate-bar"><div class="winrate-fill" id="stat-exitosas-globales-bar"></div></div>
             </div>
             <div class="metric-card">
-                <div class="label">Win Rate Global</div>
-                <div class="value" id="stat-winrate-global">-</div>
-                <div class="winrate-bar"><div class="winrate-fill" id="stat-winrate-global-bar"></div></div>
+                <div class="label">Exitosas del Día</div>
+                <div class="value" id="stat-exitosas-dia">-</div>
+                <div class="winrate-bar"><div class="winrate-fill" id="stat-exitosas-dia-bar"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Mejor Par + Estrategia</div>
+                <div class="value neutral" id="stat-mejor-par" style="font-size:16px;">-</div>
             </div>
         </div>
 
@@ -496,20 +500,24 @@
             const params = getFilters();
             const qs = buildQuery(params);
 
-            // Stats filtrados (siempre se actualizan)
+            // Stats filtrados (sin filtros para métricas globales)
             const statsResp = await fetch('/api/stats?' + qs);
             const stats = await statsResp.json();
             document.getElementById('stat-total').textContent = stats.total;
-            document.getElementById('stat-winrate').textContent = stats.win_rate + '%';
-            document.getElementById('stat-winrate').className = 'value ' + (stats.win_rate >= 50 ? 'positive' : 'negative');
-            document.getElementById('stat-winrate-bar').style.width = stats.win_rate + '%';
 
-            // Stats globales (sin filtros, incluye abiertos en win rate)
-            const globalResp = await fetch('/api/stats');
-            const globalStats = await globalResp.json();
-            document.getElementById('stat-winrate-global').textContent = globalStats.win_rate_global + '%';
-            document.getElementById('stat-winrate-global').className = 'value ' + (globalStats.win_rate_global >= 50 ? 'positive' : 'negative');
-            document.getElementById('stat-winrate-global-bar').style.width = globalStats.win_rate_global + '%';
+            // Exitosas globales
+            document.getElementById('stat-exitosas-globales').textContent = stats.exitosas_globales + '%';
+            document.getElementById('stat-exitosas-globales').className = 'value ' + (stats.exitosas_globales >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-exitosas-globales-bar').style.width = stats.exitosas_globales + '%';
+
+            // Exitosas del día
+            document.getElementById('stat-exitosas-dia').textContent = stats.exitosas_dia + '%';
+            document.getElementById('stat-exitosas-dia').className = 'value ' + (stats.exitosas_dia >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-exitosas-dia-bar').style.width = stats.exitosas_dia + '%';
+
+            // Mejor par + estrategia
+            document.getElementById('stat-mejor-par').textContent =
+                stats.mejor_estrategia + ' + ' + stats.mejor_activo + ': $' + stats.mejor_ganancia.toLocaleString();
 
             // Tabla estrategias
             const tbodyEst = document.getElementById('table-estrategias');

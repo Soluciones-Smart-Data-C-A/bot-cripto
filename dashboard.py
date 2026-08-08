@@ -77,35 +77,13 @@ def api_stats():
 
         where_sql = " AND ".join(where_clauses)
 
-        # Estadísticas generales
+        # Estadísticas generales (cerrados)
         cursor.execute(f"""
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas,
-                SUM(CASE WHEN resultado LIKE '%%TP%%'
-                    THEN CASE
-                        WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
-                        ELSE precio_entrada - precio_salida
-                    END
-                    ELSE 0
-                END) as ganancia_total,
-                SUM(CASE WHEN resultado LIKE '%%SL%%'
-                    THEN CASE
-                        WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
-                        ELSE precio_entrada - precio_salida
-                    END
-                    ELSE 0
-                END) as perdida_total,
-                MAX(CASE
-                    WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
-                    ELSE precio_entrada - precio_salida
-                END) as mejor_trade,
-                MIN(CASE
-                    WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
-                    ELSE precio_entrada - precio_salida
-                END) as peor_trade
+                SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas
             FROM historial_operaciones
             WHERE {where_sql}
         """, params)
@@ -115,14 +93,37 @@ def api_stats():
         wins = row[1] or 0
         losses = row[2] or 0
         abiertas = row[3] or 0
-        ganancia_total = float(row[4] or 0)
-        perdida_total = float(row[5] or 0)
-        mejor_trade = float(row[6] or 0)
-        peor_trade = float(row[7] or 0)
 
-        win_rate = (wins / total * 100) if total > 0 else 0
-        win_rate_global = (wins / (wins + losses + abiertas) * 100) if (wins + losses + abiertas) > 0 else 0
-        profit_factor = (ganancia_total / abs(perdida_total)) if perdida_total != 0 else 0
+        exitosas_globales = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+
+        # Exitosas del día (cerrados hoy)
+        cursor.execute("""
+            SELECT
+                SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins_hoy,
+                SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses_hoy
+            FROM historial_operaciones
+            WHERE fecha_cierre >= CURDATE()
+        """)
+        row_dia = cursor.fetchone()
+        wins_hoy = row_dia[0] or 0
+        losses_hoy = row_dia[1] or 0
+        exitosas_dia = (wins_hoy / (wins_hoy + losses_hoy) * 100) if (wins_hoy + losses_hoy) > 0 else 0
+
+        # Mejor par + estrategia (por ganancia total)
+        cursor.execute("""
+            SELECT estrategia, simbolo,
+                   SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
+                       ELSE precio_entrada - precio_salida END) as ganancia_total
+            FROM historial_operaciones
+            WHERE resultado LIKE '%%TP%%'
+            GROUP BY estrategia, simbolo
+            ORDER BY ganancia_total DESC
+            LIMIT 1
+        """)
+        mejor_row = cursor.fetchone()
+        mejor_estrategia = mejor_row[0] if mejor_row else '-'
+        mejor_activo = mejor_row[1] if mejor_row else '-'
+        mejor_ganancia = round(float(mejor_row[2] or 0), 2) if mejor_row else 0
 
         # Estadísticas por estrategia (sin filtro de resultado para contar abiertas)
         where_clauses_estrat = []
@@ -172,13 +173,11 @@ def api_stats():
             'wins': wins,
             'losses': losses,
             'abiertas': abiertas,
-            'win_rate': round(win_rate, 1),
-            'win_rate_global': round(win_rate_global, 1),
-            'ganancia_total': round(ganancia_total, 2),
-            'perdida_total': round(perdida_total, 2),
-            'profit_factor': round(profit_factor, 2),
-            'mejor_trade': round(mejor_trade, 2),
-            'peor_trade': round(peor_trade, 2),
+            'exitosas_globales': round(exitosas_globales, 1),
+            'exitosas_dia': round(exitosas_dia, 1),
+            'mejor_estrategia': mejor_estrategia,
+            'mejor_activo': mejor_activo,
+            'mejor_ganancia': mejor_ganancia,
             'por_estrategia': por_estrategia
         })
 
