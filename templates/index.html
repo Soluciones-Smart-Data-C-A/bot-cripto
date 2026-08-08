@@ -112,7 +112,8 @@
         /* Carrusel trades abiertos */
         .carousel-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
         .carousel { display: flex; gap: 12px; min-width: min-content; }
-        .carousel-card { flex: 0 0 220px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; position: relative; overflow: hidden; }
+        .carousel-card { flex: 0 0 220px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; position: relative; overflow: hidden; cursor: pointer; }
+        .carousel-card:hover { border-color: #58a6ff; }
         .carousel-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; }
         .carousel-card.dir-green::before { background: #3fb950; }
         .carousel-card.dir-red::before { background: #f85149; }
@@ -129,6 +130,40 @@
         .carousel-card .cc-pnl.positive { color: #3fb950; }
         .carousel-card .cc-pnl.negative { color: #f85149; }
         .carousel-empty { color: #8b949e; font-size: 14px; padding: 20px 0; text-align: center; }
+
+        /* Fila resaltada al hacer clic en Trades Abiertos */
+        #table-trades tr.row-highlight {
+            animation: rowPulse 2.5s ease-out;
+        }
+        @keyframes rowPulse {
+            0% { background: #58a6ff55; }
+            100% { background: transparent; }
+        }
+
+        /* Toast para mostrar ID y estrategia */
+        #trade-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-left: 4px solid #58a6ff;
+            color: #e1e4e8;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 9998;
+            pointer-events: none;
+        }
+        #trade-toast.show { opacity: 1; transform: translateY(0); }
+        #trade-toast .toast-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 6px; }
+        #trade-toast .toast-badge.long { background: #3fb95022; color: #3fb950; }
+        #trade-toast .toast-badge.short { background: #f8514922; color: #f85149; }
+        #trade-toast .toast-title { font-weight: 600; margin-bottom: 4px; }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -194,6 +229,7 @@
 </head>
 <body>
     <div id="top-loading-bar"></div>
+    <div id="trade-toast"></div>
     <div class="container">
         <div class="header-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
             <h1 style="margin:0;">📊 Bot Cripto - Dashboard</h1>
@@ -650,7 +686,7 @@
                     const pnlSign = t.pnl_pct >= 0 ? '+' : '';
 
                     container.innerHTML += `
-                        <div class="carousel-card dir-${t.direccion}">
+                        <div class="carousel-card dir-${t.direccion}" onclick="resaltarEnHistorial(${t.id}, '${t.simbolo}', '${t.estrategia}', '${t.tipo}')">
                             <div class="cc-header">
                                 <span class="cc-symbol">${t.simbolo}</span>
                                 <span class="cc-tipo badge ${tipoBadge}">${t.tipo}</span>
@@ -690,7 +726,7 @@
                     : '-';
 
                 tbodyTrades.innerHTML += `
-                    <tr>
+                    <tr data-id="${t.id}">
                         <td>${t.id}</td>
                         <td>${t.fecha_apertura || '-'}</td>
                         <td>${t.simbolo}</td>
@@ -808,6 +844,41 @@
                 loadOpenTrades();
             } catch(e) {
                 alert('Error de conexión: ' + e);
+            }
+        }
+
+        function showTradeToast(id, simbolo, estrategia, tipo) {
+            const toast = document.getElementById('trade-toast');
+            const badgeCls = tipo === 'LONG' ? 'long' : 'short';
+            toast.innerHTML = `
+                <div class="toast-title">Señal #${id} · ${simbolo}</div>
+                <div>
+                    <span class="toast-badge ${badgeCls}">${tipo}</span>
+                    <span>${estrategia}</span>
+                </div>
+            `;
+            toast.classList.add('show');
+            clearTimeout(showTradeToast._timer);
+            showTradeToast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        async function resaltarEnHistorial(id, simbolo, estrategia, tipo) {
+            const encontrar = () => document.querySelector(`#table-trades tr[data-id="${id}"]`);
+
+            let row = encontrar();
+            if (!row) {
+                currentPage = 1;
+                await loadTrades();
+                row = encontrar();
+            }
+
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                row.classList.remove('row-highlight');
+                void row.offsetWidth;
+                row.classList.add('row-highlight');
+            } else {
+                showTradeToast(id, simbolo, estrategia, tipo);
             }
         }
 
