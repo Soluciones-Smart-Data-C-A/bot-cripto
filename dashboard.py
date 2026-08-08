@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta
 
 import requests
+import pandas as pd
 from flask import Flask, jsonify, render_template, request
 
 # Agregar directorio actual al path para importar common
@@ -495,7 +496,8 @@ def api_open_trades():
                     precio_actual = float(df['Close'].iloc[-1])
                 else:
                     precio_actual = trade['precio_entrada']
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ Error obteniendo precio actual de {trade['simbolo']}: {e}")
                 precio_actual = trade['precio_entrada']
 
             trade['precio_actual'] = round(precio_actual, 5)
