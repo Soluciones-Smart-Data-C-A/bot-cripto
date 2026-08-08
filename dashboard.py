@@ -606,13 +606,6 @@ def api_open_trades():
                 else:
                     position = 0.5
 
-            if position > 0.5:
-                trade['direccion'] = 'green'
-            elif position < 0.5:
-                trade['direccion'] = 'red'
-            else:
-                trade['direccion'] = 'neutral'
-
             # PnL %
             if tipo == 'LONG' and entrada > 0:
                 trade['pnl_pct'] = round((precio_actual - entrada) / entrada * 100, 2)
@@ -620,6 +613,14 @@ def api_open_trades():
                 trade['pnl_pct'] = round((entrada - precio_actual) / entrada * 100, 2)
             else:
                 trade['pnl_pct'] = 0
+
+            # Dirección del borde: rojo si pierde, naranja entre 0.01 y 0.5, verde > 0.5
+            if trade['pnl_pct'] < 0:
+                trade['direccion'] = 'red'
+            elif position <= 0.5:
+                trade['direccion'] = 'orange'
+            else:
+                trade['direccion'] = 'green'
 
             trades.append(trade)
 
