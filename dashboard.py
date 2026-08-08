@@ -121,7 +121,23 @@ def api_stats():
         win_rate = (wins / total * 100) if total > 0 else 0
         profit_factor = (ganancia_total / abs(perdida_total)) if perdida_total != 0 else 0
 
-        # Estadísticas por estrategia
+        # Estadísticas por estrategia (sin filtro de resultado para contar abiertas)
+        where_clauses_estrat = []
+        params_estrat = []
+        if estrategia:
+            where_clauses_estrat.append("estrategia = %s")
+            params_estrat.append(estrategia)
+        if simbolo:
+            where_clauses_estrat.append("simbolo = %s")
+            params_estrat.append(simbolo)
+        if desde:
+            where_clauses_estrat.append("fecha_apertura >= %s")
+            params_estrat.append(desde)
+        if hasta:
+            where_clauses_estrat.append("fecha_apertura <= %s")
+            params_estrat.append(hasta + " 23:59:59")
+        where_sql_estrat = " AND ".join(where_clauses_estrat) if where_clauses_estrat else "1=1"
+
         cursor.execute(f"""
             SELECT
                 estrategia,
@@ -131,10 +147,10 @@ def api_stats():
                     ELSE precio_entrada - precio_salida END) as pnl,
                 SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas
             FROM historial_operaciones
-            WHERE {where_sql}
+            WHERE {where_sql_estrat}
             GROUP BY estrategia
             ORDER BY estrategia
-        """, params)
+        """, params_estrat)
         por_estrategia = []
         for r in cursor.fetchall():
             estrat_total = r[1] or 0

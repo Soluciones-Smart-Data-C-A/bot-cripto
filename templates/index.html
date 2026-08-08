@@ -280,6 +280,7 @@
     <script>
         let chart = null;
         let candleSeries = null;
+        let saldoChart = null;
         let autoRefreshInterval = null;
 
         function setAutoRefresh(minutes) {
@@ -625,7 +626,12 @@
 
             const sorted = saldos.reverse();
 
-            const chart = LightweightCharts.createChart(
+            if (saldoChart) {
+                saldoChart.remove();
+                saldoChart = null;
+            }
+
+            saldoChart = LightweightCharts.createChart(
                 document.getElementById('saldo-chart-container'), {
                 width: document.getElementById('saldo-chart-container').clientWidth,
                 height: 250,
@@ -634,7 +640,7 @@
                 timeScale: { timeVisible: false }
             });
 
-            const lineSeries = chart.addLineSeries({
+            const lineSeries = saldoChart.addLineSeries({
                 color: '#58a6ff',
                 lineWidth: 2,
             });
@@ -645,7 +651,7 @@
             }));
 
             lineSeries.setData(data);
-            chart.timeScale().fitContent();
+            saldoChart.timeScale().fitContent();
         }
 
         async function showDetail(tradeId) {
