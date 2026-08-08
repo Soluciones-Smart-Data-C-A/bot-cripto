@@ -153,6 +153,8 @@ def ejecutar_bot():
             'tipo': t['tipo'],
             'entrada': t['entrada'],
             'id': t['id'],
+            'sl': t.get('sl'),
+            'tp': t.get('tp'),
             'fecha_apertura': t.get('fecha_apertura')
         }
     if trades:
