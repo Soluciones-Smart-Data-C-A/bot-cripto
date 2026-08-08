@@ -201,17 +201,17 @@
             </div>
             <div class="metric-card">
                 <div class="label">Exitosas Globales</div>
-                <div class="value" id="stat-exitosas-globales">-</div>
+                <div class="value neutral" id="stat-exitosas-globales">-</div>
                 <div class="winrate-bar"><div class="winrate-fill" id="stat-exitosas-globales-bar"></div></div>
             </div>
             <div class="metric-card">
                 <div class="label">Exitosas del Día</div>
-                <div class="value" id="stat-exitosas-dia">-</div>
+                <div class="value neutral" id="stat-exitosas-dia">-</div>
                 <div class="winrate-bar"><div class="winrate-fill" id="stat-exitosas-dia-bar"></div></div>
             </div>
             <div class="metric-card">
                 <div class="label">Mejor Par + Estrategia</div>
-                <div class="value neutral" id="stat-mejor-par" style="font-size:16px;">-</div>
+                <div class="value neutral" id="stat-mejor-par">-</div>
             </div>
         </div>
 
@@ -507,12 +507,12 @@
 
             // Exitosas globales
             document.getElementById('stat-exitosas-globales').textContent = stats.exitosas_globales + '%';
-            document.getElementById('stat-exitosas-globales').className = 'value ' + (stats.exitosas_globales >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-exitosas-globales').className = 'value neutral';
             document.getElementById('stat-exitosas-globales-bar').style.width = stats.exitosas_globales + '%';
 
             // Exitosas del día
             document.getElementById('stat-exitosas-dia').textContent = stats.exitosas_dia + '%';
-            document.getElementById('stat-exitosas-dia').className = 'value ' + (stats.exitosas_dia >= 50 ? 'positive' : 'negative');
+            document.getElementById('stat-exitosas-dia').className = 'value neutral';
             document.getElementById('stat-exitosas-dia-bar').style.width = stats.exitosas_dia + '%';
 
             // Mejor par + estrategia
