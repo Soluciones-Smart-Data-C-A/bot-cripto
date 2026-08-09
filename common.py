@@ -643,6 +643,15 @@ def obtener_saldos(chat_id=None, limit=30):
 # ==========================================
 # TELEGRAM
 # ==========================================
+def icono_cierre(resultado):
+    """Icono de éxito/fallo según el motivo del cierre: TP => ✅, SL => ❌, otros => ''."""
+    r = (resultado or '').upper()
+    if 'TP' in r:
+        return '✅'
+    if 'SL' in r:
+        return '❌'
+    return ''
+
 def enviar_telegram(estrategia, simbolo, mensaje):
     # Verificar si las notificaciones están desactivadas
     notify_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')

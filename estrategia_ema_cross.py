@@ -75,8 +75,9 @@ def analizar_apertura_ny(simbolo):
                     if pos:
                         pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"📉 *ENTRADA SHORT (NY OPEN)*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}\n"
-                        f"SL: {sl:.5f}\nTP: {tp:.5f}\nID: {id_op}\n"
+                        f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
+                        f"Dirección: SHORT\n"
+                        f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
                         f"Motivo: Recuperación tras manipulación superior.{pos_msg}")
 
             # Detectar Manipulación Inferior (Busca Compras)
@@ -98,8 +99,9 @@ def analizar_apertura_ny(simbolo):
                     if pos:
                         pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🚀 *ENTRADA LONG (NY OPEN)*\nPar: {simbolo}\nPrecio: {precio_actual:.5f}\n"
-                        f"SL: {sl:.5f}\nTP: {tp:.5f}\nID: {id_op}\n"
+                        f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
+                        f"Dirección: LONG\n"
+                        f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
                         f"Motivo: Recuperación tras manipulación inferior.{pos_msg}")
 
         # 3. Gestión de Cierre (Target: extremo opuesto del rango)
@@ -128,7 +130,7 @@ def analizar_apertura_ny(simbolo):
             if cerrar:
                 common.registrar_cierre(op['id'], p_actual, res)
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE NY OPEN ({simbolo})*\nResultado: {res}\nPrecio: {p_actual:.5f}\n"
+                    f"🏁 *CIERRE NY OPEN {common.icono_cierre(res)} ({simbolo})*\nMotivo: {res}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
                 del rangos_dia[simbolo]  # Una operación por día según la estrategia

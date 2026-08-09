@@ -849,7 +849,7 @@ def vigilar_cierres():
                 print(f"🏁 [watchdog] Cierre automático {simbolo} #{trade_id}: {resultado} @ {precio_actual:.5f}")
 
                 common.enviar_telegram(estrategia, simbolo,
-                    f"🏁 *CIERRE AUTOMÁTICO ({estrategia})*\n"
+                    f"🏁 *CIERRE AUTOMÁTICO {common.icono_cierre(resultado)} ({estrategia})*\n"
                     f"Par: {simbolo}\nMotivo: {resultado}\n"
                     f"Precio: {precio_actual:.5f}\nID: {trade_id}")
             except Exception as e:

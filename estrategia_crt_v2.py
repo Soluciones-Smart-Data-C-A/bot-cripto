@@ -128,7 +128,7 @@ def chequear_entradas():
                 if pos:
                     pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                 common.enviar_telegram(ESTRATEGIA, activo,
-                    f"🎯 *CRT SEÑAL DETECTADA ({activo})*\n"
+                    f"🎯 *SEÑAL CRT_V7 ({activo})*\n"
                     f"Dirección: {signal}\n"
                     f"Entrada: {p_entrada:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
                     f"ID: {nueva_op['id']}{pos_msg}")
@@ -158,7 +158,7 @@ def gestionar_operaciones():
             if cerrar:
                 common.registrar_cierre(op['id'], p_actual, msg)
                 common.enviar_telegram(ESTRATEGIA, op['simbolo'],
-                    f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
+                    f"🏁 *CIERRE CRT {common.icono_cierre(msg)} ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 operaciones_activas.remove(op)
         except Exception as e:
