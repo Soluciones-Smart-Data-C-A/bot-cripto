@@ -90,6 +90,11 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/estrategias')
+def estrategias():
+    return render_template('estrategias.html')
+
+
 # ==========================================
 # API: ESTADÍSTICAS
 # ==========================================

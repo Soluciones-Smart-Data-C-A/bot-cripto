@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Cripto - Estrategias</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+        .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px; }
+        .header-row h1 { font-size: 24px; color: #58a6ff; margin: 0; }
+        .back-link { color: #8b949e; text-decoration: none; font-size: 14px; }
+        .back-link:hover { color: #58a6ff; }
+
+        .estr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .estr-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; cursor: pointer; transition: border-color 0.2s, transform 0.2s; display: flex; flex-direction: column; }
+        .estr-card:hover { border-color: #58a6ff; transform: translateY(-2px); }
+        .estr-card .estr-nombre { font-size: 18px; font-weight: 600; color: #58a6ff; margin-bottom: 10px; }
+        .estr-card .estr-resumen { font-size: 14px; color: #8b949e; flex: 1; margin-bottom: 15px; }
+        .estr-card .btn-ver { align-self: flex-start; background: #1f6feb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .estr-card .btn-ver:hover { background: #388bfd; }
+
+        #estr-detalle { display: none; }
+        .detalle-wrap { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 25px; }
+        .detalle-wrap h2 { font-size: 22px; color: #58a6ff; margin-bottom: 15px; }
+        .detalle-wrap .btn-volver { background: none; border: 1px solid #30363d; color: #e1e4e8; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-bottom: 20px; }
+        .detalle-wrap .btn-volver:hover { border-color: #58a6ff; color: #58a6ff; }
+
+        .estr-md { font-size: 15px; line-height: 1.7; margin-bottom: 25px; }
+        .estr-md h1 { font-size: 22px; color: #e1e4e8; margin: 0 0 12px 0; }
+        .estr-md h2 { font-size: 18px; color: #e1e4e8; margin: 18px 0 8px 0; }
+        .estr-md ul { padding-left: 22px; margin: 8px 0; }
+        .estr-md li { margin-bottom: 6px; }
+        .estr-md p { margin-bottom: 10px; }
+        .estr-md strong { color: #e1e4e8; }
+        .estr-md a { color: #58a6ff; text-decoration: none; }
+        .estr-md a:hover { text-decoration: underline; }
+
+        .video-wrap { margin-top: 20px; }
+        .video-wrap h3 { font-size: 15px; color: #8b949e; margin-bottom: 12px; }
+        .video-embed { position: relative; width: 100%; padding-top: 56.25%; border-radius: 8px; overflow: hidden; background: #0d1117; }
+        .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        .video-link { display: inline-block; margin-top: 12px; color: #58a6ff; font-size: 14px; text-decoration: none; }
+        .video-link:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            .container { padding: 15px; }
+            .header-row h1 { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <h1>📚 Estrategias del Bot</h1>
+            <a class="back-link" href="/">← Volver al Dashboard</a>
+        </div>
+
+        <!-- Lista de estrategias -->
+        <div class="estr-grid" id="estr-lista"></div>
+
+        <!-- Detalle de estrategia -->
+        <div id="estr-detalle">
+            <div class="detalle-wrap">
+                <button class="btn-volver" onclick="mostrarLista()">← Volver a la lista</button>
+                <h2 id="detalle-titulo"></h2>
+                <div class="estr-md" id="detalle-markdown"></div>
+                <div class="video-wrap">
+                    <h3>📹 Video que la genera</h3>
+                    <div class="video-embed" id="detalle-video"></div>
+                    <a class="video-link" id="detalle-enlace" href="#" target="_blank" rel="noopener">Abrir en YouTube</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ESTRATEGIAS = {
+            'MORA_EMA_CROSS': {
+                nombre: 'Mora Trader — Cruce de EMAs',
+                resumen: 'Cruce rápido de EMA 9 y 21 con SL/TP ratio 1:3.',
+                md: `# Mora Trader (Cruce de EMAs)
+
+**Concepto:** cruce rápido de las medias móviles EMA 9 y EMA 21.
+
+- **LONG** cuando la EMA 9 cruza por encima de la EMA 21.
+- **SHORT** cuando la EMA 9 cruza por debajo de la EMA 21.
+- **SL/TP ratio 1:3** — stop loss de 0.2% y take profit de 0.6%.
+- Cierre por TP, SL, cruce contrario o tras un máximo de **24 horas** abierto.
+- Escaneo de símbolos cada 5 minutos en busca de señales en velas de 15 minutos.`,
+                video: 'https://www.youtube.com/shorts/roEy8Da2R1A',
+                embed: 'https://www.youtube.com/embed/roEy8Da2R1A'
+            },
+            'CRT_V7': {
+                nombre: 'Create-Range-Trade (CRT v7.1)',
+                resumen: 'Acumulación de sesión, manipulación de extremos y expansión.',
+                md: `# Create-Range-Trade (CRT v7.1)
+
+**Concepto:** operar el ciclo de Acumulación → Manipulación → Expansión.
+
+- **Acumulación:** el precio se consolida en un rango durante la sesión.
+- **Manipulación:** barrido de los extremos del rango (captura de liquidez).
+- **Expansión:** movimiento direccional real tras la manipulación.
+- **SL** de 0.2% y **TP** de 0.6% desde la entrada.
+- Entradas intradía durante la sesión de Nueva York.`,
+                video: 'https://www.youtube.com/watch?v=pVOjzW1q1Ak',
+                embed: 'https://www.youtube.com/embed/pVOjzW1q1Ak'
+            },
+            'SMC_FVG_BOS': {
+                nombre: 'Smart Money Concepts (SMC)',
+                resumen: 'Fair Value Gaps + Break of Structure.',
+                md: `# Smart Money Concepts (SMC)
+
+**Concepto:** alinearse con el flujo del dinero institucional usando FVG y BOS.
+
+- Busca **FVG** (Fair Value Gaps / huecos de valor justo) en el gráfico.
+- Confirma la señal con **BOS** (Break of Structure / rompimiento de estructura).
+- Entradas sobre la manipulación y retorno a la estructura de smart money.`,
+                video: 'https://www.youtube.com/watch?v=f55zVH388z4',
+                embed: 'https://www.youtube.com/embed/f55zVH388z4'
+            },
+            'NY_OPEN': {
+                nombre: 'Mora Trader — Apertura 9:30 AM NY',
+                resumen: 'Manipulación del rango de apertura (Judas Swing).',
+                md: `# Mora Trader (Apertura 9:30 AM NY)
+
+**Concepto:** operar la manipulación del rango de apertura de Nueva York (Judas Swing).
+
+- Opera la vela de las **9:30 AM** (hora de Nueva York).
+- **Judas Swing:** movimiento engañoso que barre los extremos del rango de apertura antes de la expansión.
+- **TP** en el extremo opuesto del rango del día.
+- **SL** protegido más allá del punto de manipulación.`,
+                video: 'https://www.youtube.com/watch?v=paOAuskpOLA',
+                embed: 'https://www.youtube.com/embed/paOAuskpOLA'
+            }
+        };
+
+        function escaparHtml(texto) {
+            return texto
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function renderMd(md) {
+            const lineas = md.split('\n');
+            let html = '';
+            let enLista = false;
+
+            lineas.forEach(linea => {
+                const l = linea.trim();
+                if (l.startsWith('## ')) {
+                    if (enLista) { html += '</ul>'; enLista = false; }
+                    html += `<h2>${escaparHtml(l.slice(3))}</h2>`;
+                } else if (l.startsWith('# ')) {
+                    if (enLista) { html += '</ul>'; enLista = false; }
+                    html += `<h1>${escaparHtml(l.slice(2))}</h1>`;
+                } else if (l.startsWith('- ')) {
+                    if (!enLista) { html += '<ul>'; enLista = true; }
+                    html += `<li>${escaparHtml(l.slice(2))}</li>`;
+                } else if (l === '') {
+                    if (enLista) { html += '</ul>'; enLista = false; }
+                } else {
+                    if (enLista) { html += '</ul>'; enLista = false; }
+                    html += `<p>${escaparHtml(l)}</p>`;
+                }
+            });
+            if (enLista) { html += '</ul>'; }
+
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+            return html;
+        }
+
+        function mostrarLista() {
+            document.getElementById('estr-detalle').style.display = 'none';
+            document.getElementById('estr-lista').style.display = '';
+        }
+
+        function mostrarDetalle(key) {
+            const info = ESTRATEGIAS[key];
+            if (!info) return;
+
+            document.getElementById('detalle-titulo').textContent = info.nombre;
+            document.getElementById('detalle-markdown').innerHTML = renderMd(info.md);
+            document.getElementById('detalle-video').innerHTML =
+                `<iframe src="${info.embed}" title="${info.nombre}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+            document.getElementById('detalle-enlace').href = info.video;
+
+            document.getElementById('estr-lista').style.display = 'none';
+            document.getElementById('estr-detalle').style.display = '';
+            window.scrollTo(0, 0);
+        }
+
+        function construirLista() {
+            const contenedor = document.getElementById('estr-lista');
+            contenedor.innerHTML = '';
+            Object.keys(ESTRATEGIAS).forEach(key => {
+                const info = ESTRATEGIAS[key];
+                contenedor.innerHTML += `
+                    <div class="estr-card" onclick="mostrarDetalle('${key}')">
+                        <div class="estr-nombre">${info.nombre}</div>
+                        <div class="estr-resumen">${info.resumen}</div>
+                        <button class="btn-ver">Ver detalles</button>
+                    </div>
+                `;
+            });
+        }
+
+        construirLista();
+    </script>
+</body>
+</html>
