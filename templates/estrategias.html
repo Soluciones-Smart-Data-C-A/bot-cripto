@@ -177,7 +177,7 @@
 
         function mostrarLista() {
             document.getElementById('estr-detalle').style.display = 'none';
-            document.getElementById('estr-lista').style.display = '';
+            document.getElementById('estr-lista').style.display = 'grid';
         }
 
         function mostrarDetalle(key) {
@@ -191,7 +191,7 @@
             document.getElementById('detalle-enlace').href = info.video;
 
             document.getElementById('estr-lista').style.display = 'none';
-            document.getElementById('estr-detalle').style.display = '';
+            document.getElementById('estr-detalle').style.display = 'block';
             window.scrollTo(0, 0);
         }
 
