@@ -152,6 +152,25 @@ def inicializar_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                chat_id VARCHAR(50) PRIMARY KEY,
+                username VARCHAR(100),
+                first_name VARCHAR(100),
+                fecha_alta DATETIME DEFAULT NOW()
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS preferencias_notificaciones (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                chat_id VARCHAR(50) NOT NULL,
+                estrategia VARCHAR(30),
+                simbolo VARCHAR(20),
+                KEY idx_pref (chat_id)
+            )
+        """)
+
         # Agregar columnas nuevas si la tabla ya existía sin ellas
         for col, tipo in [('meta_diaria', 'FLOAT'), ('perdida_trade', 'FLOAT'), ('ganancia_trade', 'FLOAT')]:
             try:
@@ -178,6 +197,102 @@ def obtener_suscriptores():
         finally:
             conn.close()
     return ids
+
+def registrar_usuario(chat_id, username=None, first_name=None):
+    """Registra o actualiza un usuario de Telegram (auto-registro desde el login web)."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO usuarios (chat_id, username, first_name)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name)
+        """, (str(chat_id), username, first_name))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error registrando usuario: {e}")
+        return None
+    finally:
+        conn.close()
+
+def obtener_usuario(chat_id):
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT chat_id, username, first_name FROM usuarios WHERE chat_id = %s", (str(chat_id),))
+        r = cursor.fetchone()
+        if r:
+            return {'chat_id': str(r[0]), 'username': r[1], 'first_name': r[2]}
+        return None
+    except Error as e:
+        print(f"❌ Error obteniendo usuario: {e}")
+        return None
+    finally:
+        conn.close()
+
+def obtener_preferencias(chat_id):
+    """Preferencias de notificación de un usuario: listas de estrategias y símbolos.
+    Sin preferencias configuradas, el usuario recibe todas las notificaciones."""
+    conn = get_db_connection()
+    prefs = {'estrategias': [], 'simbolos': []}
+    if not conn:
+        return prefs
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT estrategia, simbolo FROM preferencias_notificaciones WHERE chat_id = %s
+        """, (str(chat_id),))
+        for r in cursor.fetchall():
+            if r[0]:
+                prefs['estrategias'].append(r[0])
+            if r[1]:
+                prefs['simbolos'].append(r[1])
+    except Error as e:
+        print(f"❌ Error obteniendo preferencias: {e}")
+    finally:
+        conn.close()
+    return prefs
+
+def guardar_preferencias(chat_id, estrategias=None, simbolos=None):
+    """Reemplaza las preferencias de notificación de un usuario."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM preferencias_notificaciones WHERE chat_id = %s", (str(chat_id),))
+        for e in (estrategias or []):
+            cursor.execute("""
+                INSERT INTO preferencias_notificaciones (chat_id, estrategia) VALUES (%s, %s)
+            """, (str(chat_id), e))
+        for s in (simbolos or []):
+            cursor.execute("""
+                INSERT INTO preferencias_notificaciones (chat_id, simbolo) VALUES (%s, %s)
+            """, (str(chat_id), s))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error guardando preferencias: {e}")
+        return False
+    finally:
+        conn.close()
+
+def usuario_quiere_notificacion(chat_id, estrategia, simbolo):
+    """Sin preferencias => recibe todo. Con preferencias => recibe si coincide
+    la estrategia O el símbolo (unión)."""
+    prefs = obtener_preferencias(chat_id)
+    if not prefs['estrategias'] and not prefs['simbolos']:
+        return True
+    if estrategia and estrategia in prefs['estrategias']:
+        return True
+    if simbolo and simbolo in prefs['simbolos']:
+        return True
+    return False
 
 def registrar_apertura(estrategia, simbolo, tipo, precio, sl=None, tp=None,
                        rango_alto=None, rango_bajo=None, ema_9=None, ema_21=None):
@@ -394,10 +509,10 @@ def obtener_meta_diaria(chat_id):
     finally:
         conn.close()
 
-def calcular_posicion(precio_entrada, sl, tp):
+def calcular_posicion(precio_entrada, sl, tp, chat_id=None):
     """Calcula tamaño de posición basado en ganancia_trade del último saldo.
     USD invertir = ganancia_trade / TP_distancia_%"""
-    meta = obtener_meta_diaria()
+    meta = obtener_meta_diaria(chat_id)
     if not meta:
         return None
     tp_dist = abs(tp - precio_entrada) / precio_entrada
@@ -464,6 +579,8 @@ def enviar_telegram(estrategia, simbolo, mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     conn = get_db_connection()
     for chat_id in ids:
+        if not usuario_quiere_notificacion(chat_id, estrategia, simbolo):
+            continue
         message_id = None
         estado = 'ENVIADO'
         try:

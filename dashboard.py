@@ -7,16 +7,26 @@ import os
 import sys
 import time
 import threading
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session, redirect
 
 # Agregar directorio actual al path para importar common
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'cambia-esta-clave-por-seguridad')
+
+# Usuario del bot para el widget de "Login con Telegram" (sin @)
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '').lstrip('@')
+
+# Estrategias y activos disponibles (para configuración de notificaciones)
+ESTRATEGIAS_DISPONIBLES = ['MORA_EMA_CROSS', 'CRT_V7', 'SMC_FVG_BOS', 'NY_OPEN']
+ACTIVOS_DISPONIBLES = common.ACTIVOS
 
 # Archivo de estado de notificaciones
 NOTIFY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
@@ -85,14 +95,70 @@ def resultado_sl_tp(tipo, precio, sl, tp):
 # ==========================================
 # RUTAS PRINCIPALES
 # ==========================================
+def usuario_actual():
+    """Usuario autenticado vía Telegram (session['chat_id']) o None."""
+    chat_id = session.get('chat_id')
+    if not chat_id:
+        return None
+    return common.obtener_usuario(chat_id)
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', bot_username=TELEGRAM_BOT_USERNAME)
 
 
 @app.route('/estrategias')
 def estrategias():
     return render_template('estrategias.html')
+
+
+# ==========================================
+# LOGIN CON TELEGRAM (WIDGET OFICIAL)
+# ==========================================
+@app.route('/auth/tg')
+def auth_tg():
+    params = {}
+    for k in ('id', 'username', 'first_name', 'last_name', 'photo_url', 'auth_date', 'hash'):
+        if k in request.args:
+            params[k] = request.args[k]
+
+    received_hash = params.pop('hash', '')
+    if not received_hash or 'id' not in params:
+        return redirect('/')
+
+    # Verificación de firma: HMAC-SHA256 con secret = SHA256(bot token)
+    data_check_string = '\n'.join(f'{k}={params[k]}' for k in sorted(params))
+    secret_key = hashlib.sha256(common.TELEGRAM_TOKEN.encode()).digest()
+    computed = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed, received_hash):
+        return redirect('/')
+
+    # Antirreplay: auth_date no puede ser viejo
+    try:
+        auth_date = int(params['auth_date'])
+    except (TypeError, ValueError):
+        auth_date = 0
+    if abs(auth_date - time.time()) > 86400:
+        return redirect('/')
+
+    # Auto-registro del usuario como suscriptor
+    common.registrar_usuario(params['id'], params.get('username'), params.get('first_name'))
+    session['chat_id'] = str(params['id'])
+    return redirect('/')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/')
+
+
+@app.route('/api/me')
+def api_me():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
+    return jsonify(user)
 
 
 # ==========================================
@@ -671,9 +737,42 @@ def api_filters():
 # ==========================================
 @app.route('/api/saldos')
 def api_saldos():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
     limit = request.args.get('limit', 30, type=int)
-    saldos = common.obtener_saldos(limit=limit)
+    saldos = common.obtener_saldos(chat_id=user['chat_id'], limit=limit)
     return jsonify(saldos)
+
+
+# ==========================================
+# API: PREFERENCIAS DE NOTIFICACIÓN POR USUARIO
+# ==========================================
+@app.route('/api/preferencias')
+def api_preferencias_get():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
+    return jsonify(common.obtener_preferencias(user['chat_id']))
+
+@app.route('/api/preferencias', methods=['POST'])
+def api_preferencias_post():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
+    data = request.get_json(silent=True) or {}
+    ok = common.guardar_preferencias(user['chat_id'], data.get('estrategias'), data.get('simbolos'))
+    if not ok:
+        return jsonify({'error': 'Error guardando preferencias'}), 500
+    return jsonify(common.obtener_preferencias(user['chat_id']))
+
+
+@app.route('/api/opciones')
+def api_opciones():
+    return jsonify({
+        'estrategias': ESTRATEGIAS_DISPONIBLES,
+        'activos': ACTIVOS_DISPONIBLES
+    })
 
 
 # ==========================================

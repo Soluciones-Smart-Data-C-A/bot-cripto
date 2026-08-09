@@ -127,7 +127,7 @@ def cmd_size(message):
         bot.reply_to(message, "❌ Valores inválidos. Usa números.")
         return
 
-    pos = common.calcular_posicion(entrada, sl, tp)
+    pos = common.calcular_posicion(entrada, sl, tp, message.chat.id)
     if not pos:
         bot.reply_to(message, "❌ No hay saldo registrado o error en cálculo.\nUsa /saldo primero.")
         return

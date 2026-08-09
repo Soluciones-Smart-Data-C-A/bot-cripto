@@ -50,6 +50,27 @@
         .modal-close { background: none; border: none; color: #8b949e; font-size: 24px; cursor: pointer; }
         .modal-close:hover { color: #e1e4e8; }
 
+        /* Login con Telegram */
+        #login-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; }
+        #login-screen h1 { font-size: 26px; color: #58a6ff; margin-bottom: 10px; }
+        #login-screen p { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+        #login-screen .tg-note { font-size: 12px; color: #484f58; margin-top: 15px; max-width: 340px; }
+
+        /* Configuración de notificaciones */
+        .pref-groups { display: flex; flex-direction: column; gap: 18px; }
+        .pref-group h3 { font-size: 13px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .pref-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .pref-item { display: flex; align-items: center; gap: 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+        .pref-item:hover { border-color: #58a6ff; }
+        .pref-item input { accent-color: #58a6ff; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .btn-primary { background: #1f6feb; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn-primary:hover { background: #388bfd; }
+        .btn-ghost { background: none; border: 1px solid #30363d; color: #e1e4e8; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn-ghost:hover { border-color: #8b949e; }
+        .pref-hint { font-size: 12px; color: #484f58; margin-top: 12px; }
+        #config-saved { color: #3fb950; font-size: 13px; margin-top: 10px; min-height: 18px; }
+
         /* Info del trade */
         .trade-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; padding: 15px; background: #0d1117; border-radius: 8px; }
         .trade-info .item { }
@@ -230,11 +251,24 @@
 <body>
     <div id="top-loading-bar"></div>
     <div id="trade-toast"></div>
+
+    <!-- Pantalla de login -->
+    <div id="login-screen" style="display:none;">
+        <h1>📊 Bot Cripto - Dashboard</h1>
+        <p>Inicia sesión con tu cuenta de Telegram para ver tus datos.</p>
+        <div class="telegram-login-widget" data-telegram-login="{{ bot_username }}" data-size="large" data-auth-url="/auth/tg" data-request-access="write"></div>
+        <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
+        <p class="tg-note">¿No aparece el botón? Registra el dominio en @BotFather (Menu → Bot Settings → Web Login) y asegúrate de que la variable TELEGRAM_BOT_USERNAME del servidor tenga el @ del bot.</p>
+    </div>
+
     <div class="container">
         <div class="header-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
             <h1 style="margin:0;">📊 Bot Cripto - Dashboard</h1>
             <div style="display:flex;align-items:center;gap:15px;">
                 <a href="/estrategias" style="color:#8b949e;text-decoration:none;font-size:14px;padding:8px 14px;border:1px solid #30363d;border-radius:6px;background:#161b22;">📚 Estrategias</a>
+                <span id="user-chip" style="font-size:14px;color:#8b949e;"></span>
+                <button class="btn-action btn-refresh" onclick="abrirConfigNotif()">⚙️ Notif</button>
+                <button class="btn-action btn-refresh" onclick="logout()">Salir</button>
                 <div class="auto-refresh-group">
                 <button class="btn-action btn-refresh" onclick="setAutoRefresh(1)" id="refresh-1">1m</button>
                 <button class="btn-action btn-refresh" onclick="setAutoRefresh(5)" id="refresh-5">5m</button>
@@ -381,6 +415,32 @@
         </div>
     </div>
 
+    <!-- Modal de configuración de notificaciones -->
+    <div class="modal" id="modal-notif">
+        <div class="modal-content" style="max-width:640px;">
+            <div class="modal-header">
+                <h2>⚙️ Mis Notificaciones</h2>
+                <button class="modal-close" onclick="cerrarConfigNotif()">&times;</button>
+            </div>
+            <div class="pref-groups">
+                <div class="pref-group">
+                    <h3>Estrategias</h3>
+                    <div class="pref-grid" id="pref-estrategias"></div>
+                </div>
+                <div class="pref-group">
+                    <h3>Activos (pares)</h3>
+                    <div class="pref-grid" id="pref-activos"></div>
+                </div>
+            </div>
+            <p class="pref-hint">Si no seleccionas nada, recibirás todas las notificaciones. Al seleccionar, solo recibirás las que coincidan con una estrategia o un activo elegido.</p>
+            <div id="config-saved"></div>
+            <div class="modal-actions">
+                <button class="btn-ghost" onclick="cerrarConfigNotif()">Cancelar</button>
+                <button class="btn-primary" onclick="guardarPreferencias()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let chart = null;
         let candleSeries = null;
@@ -510,12 +570,103 @@
         });
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadFilters();
-            loadData();
-            loadSaldos();
-            checkNotifyStatus();
-            setAutoRefresh(5);
+            checkAuth();
         });
+
+        // ==========================================
+        // AUTENTICACIÓN CON TELEGRAM
+        // ==========================================
+        let currentUser = null;
+
+        async function checkAuth() {
+            try {
+                const resp = await fetch('/api/me');
+                if (resp.status === 401) {
+                    showLogin();
+                    return;
+                }
+                currentUser = await resp.json();
+                document.getElementById('user-chip').textContent =
+                    currentUser.first_name || currentUser.username || currentUser.chat_id;
+                document.getElementById('login-screen').style.display = 'none';
+                document.querySelector('.container').style.display = '';
+                loadFilters();
+                loadData();
+                loadSaldos();
+                checkNotifyStatus();
+                setAutoRefresh(5);
+            } catch (e) {
+                showLogin();
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('login-screen').style.display = '';
+            document.querySelector('.container').style.display = 'none';
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        function logout() {
+            window.location.href = '/logout';
+        }
+
+        // ==========================================
+        // CONFIGURACIÓN DE NOTIFICACIONES
+        // ==========================================
+        async function abrirConfigNotif() {
+            document.getElementById('config-saved').textContent = '';
+            try {
+                const [opResp, prefResp] = await Promise.all([
+                    fetch('/api/opciones'),
+                    fetch('/api/preferencias')
+                ]);
+                if (prefResp.status === 401) return;
+                const opciones = await opResp.json();
+                const prefs = await prefResp.json();
+                const selEst = new Set(prefs.estrategias || []);
+                const selAct = new Set(prefs.simbolos || []);
+
+                const contEst = document.getElementById('pref-estrategias');
+                contEst.innerHTML = '';
+                opciones.estrategias.forEach(e => {
+                    contEst.innerHTML += `<label class="pref-item"><input type="checkbox" value="${e}" ${selEst.has(e) ? 'checked' : ''}> ${e}</label>`;
+                });
+
+                const contAct = document.getElementById('pref-activos');
+                contAct.innerHTML = '';
+                opciones.activos.forEach(a => {
+                    contAct.innerHTML += `<label class="pref-item"><input type="checkbox" value="${a}" ${selAct.has(a) ? 'checked' : ''}> ${a}</label>`;
+                });
+
+                document.getElementById('modal-notif').classList.add('active');
+            } catch (e) {}
+        }
+
+        async function guardarPreferencias() {
+            const estrategias = Array.from(document.querySelectorAll('#pref-estrategias input:checked')).map(i => i.value);
+            const simbolos = Array.from(document.querySelectorAll('#pref-activos input:checked')).map(i => i.value);
+            try {
+                const resp = await fetch('/api/preferencias', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estrategias, simbolos })
+                });
+                const saved = document.getElementById('config-saved');
+                if (resp.ok) {
+                    saved.textContent = '✅ Preferencias guardadas';
+                    setTimeout(() => { saved.textContent = ''; }, 2500);
+                } else {
+                    saved.textContent = '❌ Error al guardar';
+                }
+            } catch (e) {}
+        }
+
+        function cerrarConfigNotif() {
+            document.getElementById('modal-notif').classList.remove('active');
+        }
 
         async function loadFilters() {
             const resp = await fetch('/api/filters');
@@ -777,6 +928,7 @@
             startLoading();
             try {
                 const resp = await fetch('/api/saldos?limit=60');
+                if (resp.status === 401) return;
                 const saldos = await resp.json();
 
                 if (saldos.length === 0) {
