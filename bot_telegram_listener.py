@@ -41,7 +41,7 @@ def cmd_help(message):
         "/saldo - Ver último saldo y meta\n"
         "/size entrada sl tp - Calcular posición\n"
         "/historial - Últimos 10 registros\n\n"
-        "La meta diaria se calcula al 5% del saldo.\n"
+        "La meta diaria se calcula con el % configurado (default 5%) del saldo.\n"
         "Win rate asumido: 30% (3W / 7L en 10 trades).",
         parse_mode="Markdown")
 
@@ -66,10 +66,10 @@ def cmd_saldo(message):
             return
 
         if common.registrar_saldo(message.chat.id, saldo):
-            meta = common.calcular_meta_diaria(saldo)
+            meta = common.calcular_meta_diaria(saldo, common.obtener_meta_pct(message.chat.id))
             bot.reply_to(message,
                 f"✅ Saldo registrado: *${saldo:,.2f}*\n\n"
-                f"📊 *Meta diaria (5%):* ${meta['meta_diaria']:.2f}\n"
+                f"📊 *Meta diaria ({common.obtener_meta_pct(message.chat.id)}%):* ${meta['meta_diaria']:.2f}\n"
                 f"Per trade: ganar *${meta['ganancia_trade']:.2f}* / perder *${meta['perdida_trade']:.2f}*\n"
                 f"10 trades (30% WR): +${meta['ganancia_trade']*3:.2f} - ${meta['perdida_trade']*7:.2f} = *${meta['meta_diaria']:.2f}*",
                 parse_mode="Markdown")
@@ -80,7 +80,7 @@ def cmd_saldo(message):
         if meta:
             bot.reply_to(message,
                 f"💰 *Último saldo:* ${meta['balance']:,.2f}\n\n"
-                f"📊 *Meta diaria (5%):* ${meta['meta_diaria']:.2f}\n"
+                f"📊 *Meta diaria ({common.obtener_meta_pct(message.chat.id)}%):* ${meta['meta_diaria']:.2f}\n"
                 f"Per trade: ganar *${meta['ganancia_trade']:.2f}* / perder *${meta['perdida_trade']:.2f}*\n"
                 f"10 trades (30% WR): +${meta['ganancia_trade']*3:.2f} - ${meta['perdida_trade']*7:.2f} = *${meta['meta_diaria']:.2f}*",
                 parse_mode="Markdown")

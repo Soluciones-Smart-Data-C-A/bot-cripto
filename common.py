@@ -157,6 +157,7 @@ def inicializar_db():
                 chat_id VARCHAR(50) PRIMARY KEY,
                 username VARCHAR(100),
                 first_name VARCHAR(100),
+                meta_pct FLOAT DEFAULT 5.0,
                 fecha_alta DATETIME DEFAULT NOW()
             )
         """)
@@ -177,6 +178,11 @@ def inicializar_db():
                 cursor.execute(f"ALTER TABLE saldos_diarios ADD COLUMN {col} {tipo}")
             except Error:
                 pass  # La columna ya existe
+
+        try:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN meta_pct FLOAT DEFAULT 5.0")
+        except Error:
+            pass  # La columna ya existe
 
         conn.commit()
     except Error as e:
@@ -439,12 +445,51 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
 # ==========================================
 # SALDOS
 # ==========================================
-def calcular_meta_diaria(balance):
-    """Calcula meta diaria (5%) y montos por trade (30% WR, ratio 1:3).
-    Fórmula verificada con ejemplos del usuario."""
-    meta = balance * 0.05
-    perdida = balance * 0.007534
-    ganancia = balance * 0.03424
+def obtener_meta_pct(chat_id):
+    """Obtiene el % de meta diaria configurado por el usuario (default 5.0)."""
+    conn = get_db_connection()
+    if not conn:
+        return 5.0
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT meta_pct FROM usuarios WHERE chat_id = %s", (str(chat_id),))
+        r = cursor.fetchone()
+        return float(r[0]) if r and r[0] else 5.0
+    except Error as e:
+        print(f"❌ Error obteniendo meta_pct: {e}")
+        return 5.0
+    finally:
+        conn.close()
+
+def guardar_meta_pct(chat_id, pct):
+    """Guarda el % de meta diaria del usuario. Crea el registro si no existe."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO usuarios (chat_id, meta_pct)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE meta_pct = VALUES(meta_pct)
+        """, (str(chat_id), float(pct)))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error guardando meta_pct: {e}")
+        return False
+    finally:
+        conn.close()
+
+def calcular_meta_diaria(balance, pct=5.0):
+    """Calcula meta diaria (% configurable) y montos por trade (30% WR, ratio 1:3).
+    Todo se escala proporcionalmente al %: si subes el %, también sube el
+    riesgo/recompensa por trade; se mantiene la estructura 3*ganancia - 7*perdida = meta."""
+    pct = float(pct or 5.0)
+    factor = pct / 5.0
+    meta = balance * pct / 100.0
+    perdida = balance * 0.007534 * factor
+    ganancia = balance * 0.03424 * factor
     return {
         'balance': balance,
         'meta_diaria': round(meta, 2),
@@ -457,7 +502,8 @@ def registrar_saldo(chat_id, saldo):
     if not conn:
         return None
     try:
-        meta = calcular_meta_diaria(saldo)
+        pct = obtener_meta_pct(chat_id)
+        meta = calcular_meta_diaria(saldo, pct)
         cursor = conn.cursor()
         try:
             cursor.execute("""
@@ -505,6 +551,39 @@ def obtener_meta_diaria(chat_id):
         return None
     except Error as e:
         print(f"❌ Error obteniendo meta diaria: {e}")
+        return None
+    finally:
+        conn.close()
+
+def recalcular_ultimo_saldo(chat_id):
+    """Recalcula meta_diaria/perdida_trade/ganancia_trade del último saldo
+    con el % actual del usuario (tras cambiar la meta diaria)."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, saldo FROM saldos_diarios
+            WHERE chat_id = %s
+            ORDER BY fecha DESC
+            LIMIT 1
+        """, (str(chat_id),))
+        r = cursor.fetchone()
+        if not r:
+            return None
+        meta_id, balance = r[0], float(r[1])
+        pct = obtener_meta_pct(chat_id)
+        meta = calcular_meta_diaria(balance, pct)
+        cursor.execute("""
+            UPDATE saldos_diarios
+            SET meta_diaria = %s, perdida_trade = %s, ganancia_trade = %s
+            WHERE id = %s
+        """, (meta['meta_diaria'], meta['perdida_trade'], meta['ganancia_trade'], meta_id))
+        conn.commit()
+        return meta
+    except Error as e:
+        print(f"❌ Error recalculando saldo: {e}")
         return None
     finally:
         conn.close()

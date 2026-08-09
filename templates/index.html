@@ -435,6 +435,14 @@
                     <div class="pref-grid" id="pref-activos"></div>
                 </div>
             </div>
+            <div class="pref-group">
+                <h3>🎯 Meta diaria</h3>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <input type="number" id="pref-meta-pct" min="0.5" max="20" step="0.5" value="5" oninput="actualizarPreviewMeta()" style="width:90px;padding:8px;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;">
+                    <span style="font-size:13px;color:#8b949e;">% del saldo</span>
+                </div>
+                <p id="pref-meta-preview" style="font-size:12px;color:#8b949e;margin-top:6px;"></p>
+            </div>
             <p class="pref-hint">Si no seleccionas nada, recibirás todas las notificaciones. Al seleccionar, solo recibirás las que coincidan con una estrategia o un activo elegido.</p>
             <div id="config-saved"></div>
             <div class="modal-actions">
@@ -450,6 +458,7 @@
         let saldoChart = null;
         let autoRefreshInterval = null;
         let loadingCount = 0;
+        let ultimoSaldoMeta = null;
 
         function startLoading() {
             loadingCount++;
@@ -622,9 +631,10 @@
         async function abrirConfigNotif() {
             document.getElementById('config-saved').textContent = '';
             try {
-                const [opResp, prefResp] = await Promise.all([
+                const [opResp, prefResp, saldoResp] = await Promise.all([
                     fetch('/api/opciones'),
-                    fetch('/api/preferencias')
+                    fetch('/api/preferencias'),
+                    fetch('/api/saldos?limit=1')
                 ]);
                 if (prefResp.status === 401) return;
                 const opciones = await opResp.json();
@@ -644,18 +654,41 @@
                     contAct.innerHTML += `<label class="pref-item"><input type="checkbox" value="${a}" ${selAct.has(a) ? 'checked' : ''}> ${a}</label>`;
                 });
 
+                const metaPct = prefs.meta_pct != null ? prefs.meta_pct : 5;
+                document.getElementById('pref-meta-pct').value = metaPct;
+
+                ultimoSaldoMeta = null;
+                try {
+                    const saldos = await saldoResp.json();
+                    if (saldos.length) ultimoSaldoMeta = saldos[0];
+                } catch (e) {}
+                actualizarPreviewMeta();
+
                 document.getElementById('modal-notif').classList.add('active');
             } catch (e) {}
+        }
+
+        function actualizarPreviewMeta() {
+            const pct = parseFloat(document.getElementById('pref-meta-pct').value) || 5;
+            const preview = document.getElementById('pref-meta-preview');
+            const fmt = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (ultimoSaldoMeta && ultimoSaldoMeta.saldo) {
+                const meta = ultimoSaldoMeta.saldo * pct / 100;
+                preview.textContent = `Meta diaria: $${fmt(meta)} = ${pct}% de $${fmt(ultimoSaldoMeta.saldo)}`;
+            } else {
+                preview.textContent = `Meta diaria: ${pct}% del saldo. Registra /saldo en Telegram para ver el monto.`;
+            }
         }
 
         async function guardarPreferencias() {
             const estrategias = Array.from(document.querySelectorAll('#pref-estrategias input:checked')).map(i => i.value);
             const simbolos = Array.from(document.querySelectorAll('#pref-activos input:checked')).map(i => i.value);
+            const metaPct = parseFloat(document.getElementById('pref-meta-pct').value) || 5;
             try {
                 const resp = await fetch('/api/preferencias', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ estrategias, simbolos })
+                    body: JSON.stringify({ estrategias, simbolos, meta_pct: metaPct })
                 });
                 const saved = document.getElementById('config-saved');
                 if (resp.ok) {

@@ -753,7 +753,9 @@ def api_preferencias_get():
     user = usuario_actual()
     if not user:
         return jsonify({'error': 'no autenticado'}), 401
-    return jsonify(common.obtener_preferencias(user['chat_id']))
+    prefs = common.obtener_preferencias(user['chat_id'])
+    prefs['meta_pct'] = common.obtener_meta_pct(user['chat_id'])
+    return jsonify(prefs)
 
 @app.route('/api/preferencias', methods=['POST'])
 def api_preferencias_post():
@@ -764,7 +766,20 @@ def api_preferencias_post():
     ok = common.guardar_preferencias(user['chat_id'], data.get('estrategias'), data.get('simbolos'))
     if not ok:
         return jsonify({'error': 'Error guardando preferencias'}), 500
-    return jsonify(common.obtener_preferencias(user['chat_id']))
+
+    if 'meta_pct' in data:
+        try:
+            pct = float(data['meta_pct'])
+        except (TypeError, ValueError):
+            pct = None
+        if pct is None or not (0.5 <= pct <= 20):
+            return jsonify({'error': 'meta_pct debe estar entre 0.5 y 20'}), 400
+        if common.guardar_meta_pct(user['chat_id'], pct):
+            common.recalcular_ultimo_saldo(user['chat_id'])
+
+    prefs = common.obtener_preferencias(user['chat_id'])
+    prefs['meta_pct'] = common.obtener_meta_pct(user['chat_id'])
+    return jsonify(prefs)
 
 
 @app.route('/api/opciones')
