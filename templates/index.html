@@ -144,6 +144,20 @@
         .user-dropdown button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; background: none; border: none; color: #e1e4e8; font-size: 13px; cursor: pointer; text-align: left; }
         .user-dropdown button:hover { background: #1f6feb; }
 
+        /* Modal perfil */
+        .perfil-avatar { width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; background: #21262d; font-size: 48px; font-weight: 700; color: #58a6ff; overflow: hidden; border: 3px solid #30363d; }
+        .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .perfil-name { text-align: center; font-size: 20px; font-weight: 600; color: #e1e4e8; margin-bottom: 4px; }
+        .perfil-username { text-align: center; font-size: 14px; color: #8b949e; margin-bottom: 20px; }
+        .perfil-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .perfil-stat { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
+        .perfil-stat .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+        .perfil-stat .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+        .perfil-stat .value.green { color: #3fb950; }
+        .perfil-stat .value.red { color: #f85149; }
+        .perfil-stat .value.blue { color: #58a6ff; }
+        .perfil-empty { text-align: center; color: #8b949e; font-size: 13px; padding: 20px; }
+
         /* Carrusel trades abiertos */
         .carousel-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
         .carousel { display: flex; gap: 12px; min-width: min-content; }
@@ -296,6 +310,7 @@
                         <span class="user-chevron">▾</span>
                     </div>
                     <div class="user-dropdown">
+                        <button onclick="abrirPerfil()">👤 Mi Perfil</button>
                         <button onclick="abrirConfigNotif()">⚙️ Configuración</button>
                         <button onclick="logout()">🚪 Salir</button>
                     </div>
@@ -474,6 +489,17 @@
         </div>
     </div>
 
+    <!-- Modal de perfil -->
+    <div class="modal" id="modal-perfil">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="modal-header">
+                <h2>Mi Perfil</h2>
+                <button class="modal-close" onclick="cerrarPerfil()">&times;</button>
+            </div>
+            <div id="perfil-content"></div>
+        </div>
+    </div>
+
     <script>
         let chart = null;
         let candleSeries = null;
@@ -647,6 +673,42 @@
                 clearInterval(autoRefreshInterval);
                 autoRefreshInterval = null;
             }
+        }
+
+        async function abrirPerfil() {
+            document.getElementById('user-menu').classList.remove('open');
+            const content = document.getElementById('perfil-content');
+            content.innerHTML = '<p style="text-align:center;color:#8b949e;">Cargando...</p>';
+            document.getElementById('modal-perfil').classList.add('active');
+            try {
+                const resp = await fetch('/api/perfil');
+                const data = await resp.json();
+                if (data.error) { content.innerHTML = '<p class="perfil-empty">Error al cargar perfil</p>'; return; }
+                const foto = data.photo_url
+                    ? `<img src="${data.photo_url}" alt="${data.first_name}">`
+                    : (data.first_name || '?').charAt(0).toUpperCase();
+                const saldo = data.saldo != null ? '$' + data.saldo.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
+                const meta = data.meta_diaria != null ? '$' + data.meta_diaria.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
+                const ganancia = data.ganancia_trade != null ? '$' + data.ganancia_trade.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
+                const perdida = data.perdida_trade != null ? '$' + data.perdida_trade.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
+                content.innerHTML = `
+                    <div class="perfil-avatar">${foto}</div>
+                    <div class="perfil-name">${data.first_name || 'Sin nombre'}</div>
+                    <div class="perfil-username">${data.username ? '@' + data.username : 'Sin usuario'}</div>
+                    <div class="perfil-stats">
+                        <div class="perfil-stat"><div class="label">💰 Saldo</div><div class="value blue">${saldo}</div></div>
+                        <div class="perfil-stat"><div class="label">🎯 Meta diaria</div><div class="value green">${meta}</div></div>
+                        <div class="perfil-stat"><div class="label">✅ Ganancia / trade</div><div class="value green">${ganancia}</div></div>
+                        <div class="perfil-stat"><div class="label">❌ Pérdida / trade</div><div class="value red">${perdida}</div></div>
+                    </div>
+                `;
+            } catch(e) {
+                content.innerHTML = '<p class="perfil-empty">Error al cargar perfil</p>';
+            }
+        }
+
+        function cerrarPerfil() {
+            document.getElementById('modal-perfil').classList.remove('active');
         }
 
         function toggleUserMenu() {

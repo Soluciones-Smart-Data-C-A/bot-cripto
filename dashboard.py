@@ -161,6 +161,26 @@ def api_me():
     return jsonify(user)
 
 
+@app.route('/api/perfil')
+def api_perfil():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
+
+    meta = common.obtener_meta_diaria(user['chat_id'])
+    return jsonify({
+        'chat_id': user['chat_id'],
+        'username': user['username'],
+        'first_name': user['first_name'],
+        'photo_url': user['photo_url'],
+        'saldo': meta['balance'] if meta else None,
+        'meta_diaria': meta['meta_diaria'] if meta else None,
+        'perdida_trade': meta['perdida_trade'] if meta else None,
+        'ganancia_trade': meta['ganancia_trade'] if meta else None,
+        'fecha_saldo': None
+    })
+
+
 # ==========================================
 # API: ESTADÍSTICAS
 # ==========================================
