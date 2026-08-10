@@ -180,6 +180,20 @@
         .carousel-card .cc-pnl.negative { color: #f85149; }
         .carousel-empty { color: #8b949e; font-size: 14px; padding: 20px 0; text-align: center; }
 
+        /* Push stack */
+        .push-stack { position: fixed; top: 70px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; max-width: 340px; pointer-events: none; }
+        .push-item { pointer-events: auto; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 12px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); animation: pushIn 0.3s ease-out; display: flex; align-items: flex-start; gap: 10px; }
+        .push-item.apertura { border-left: 4px solid #3fb950; }
+        .push-item.cierre { border-left: 4px solid #f85149; }
+        .push-item .push-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+        .push-item .push-body { flex: 1; min-width: 0; }
+        .push-item .push-title { font-size: 12px; font-weight: 600; color: #e1e4e8; margin-bottom: 2px; }
+        .push-item .push-detail { font-size: 11px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .push-item .push-close { background: none; border: none; color: #484f58; font-size: 16px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+        .push-item .push-close:hover { color: #e1e4e8; }
+        @keyframes pushIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+        @media (max-width: 480px) { .push-stack { right: 8px; left: 8px; max-width: none; } }
+
         /* Fila resaltada al hacer clic en Trades Abiertos */
         #table-trades tr.row-highlight {
             animation: rowPulse 2.5s ease-out;
@@ -279,6 +293,7 @@
 <body>
     <div id="top-loading-bar"></div>
     <div id="trade-toast"></div>
+    <div id="push-stack" class="push-stack"></div>
 
     <!-- Pantalla de login -->
     <div id="login-screen" style="display:none;">
@@ -507,6 +522,7 @@
         let autoRefreshInterval = null;
         let loadingCount = 0;
         let ultimoSaldoMeta = null;
+        let pushEs = null;
 
         function startLoading() {
             loadingCount++;
@@ -661,6 +677,7 @@
                 loadSaldos();
                 checkNotifyStatus();
                 setAutoRefresh(5);
+                conectarPush();
             } catch (e) {
                 showLogin();
             }
@@ -673,6 +690,64 @@
                 clearInterval(autoRefreshInterval);
                 autoRefreshInterval = null;
             }
+            cerrarPush();
+        }
+
+        function cerrarPush() {
+            if (pushEs) { pushEs.close(); pushEs = null; }
+        }
+
+        function conectarPush() {
+            cerrarPush();
+            if (window.isSecureContext && 'Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+            pushEs = new EventSource('/api/events');
+            pushEs.addEventListener('senal', manejarSenal);
+            pushEs.onerror = function() {};
+        }
+
+        function manejarSenal(e) {
+            try {
+                const d = JSON.parse(e.data);
+                mostrarPush(d);
+                loadData();
+                loadOpenTrades();
+                loadSaldos();
+                if (window.isSecureContext && 'Notification' in window && Notification.permission === 'granted') {
+                    const icono = d.tipo === 'apertura' ? '📈' : '🏁';
+                    const color = d.tipo === 'apertura' ? '#3fb950' : '#f85149';
+                    new Notification(`${icono} ${d.estrategia} · ${d.simbolo}`, {
+                        body: d.tipo === 'apertura'
+                            ? `${d.tipo_op} @ ${d.precio_entrada?.toFixed(2)}`
+                            : `${d.resultado} @ ${d.precio_salida?.toFixed(2)}`,
+                    });
+                }
+            } catch(ex) {}
+        }
+
+        function mostrarPush(d) {
+            const stack = document.getElementById('push-stack');
+            const item = document.createElement('div');
+            item.className = 'push-item ' + d.tipo;
+            const icono = d.tipo === 'apertura' ? '📈' : '🏁';
+            const color = d.tipo === 'apertura' ? '#3fb950' : '#f85149';
+            let detail;
+            if (d.tipo === 'apertura') {
+                detail = `${d.tipo_op} @ ${d.precio_entrada?.toFixed(2)}`;
+            } else {
+                detail = `${d.resultado} @ ${d.precio_salida?.toFixed(2)}`;
+            }
+            item.innerHTML = `
+                <span class="push-icon">${icono}</span>
+                <div class="push-body">
+                    <div class="push-title" style="color:${color}">${d.estrategia} · ${d.simbolo}</div>
+                    <div class="push-detail">${detail}</div>
+                </div>
+                <button class="push-close" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            stack.appendChild(item);
+            setTimeout(() => { if (item.parentElement) item.remove(); }, 8000);
         }
 
         async function abrirPerfil() {

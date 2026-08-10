@@ -12,7 +12,7 @@ import hmac
 from datetime import datetime, timedelta
 
 import requests
-from flask import Flask, jsonify, render_template, request, session, redirect
+from flask import Flask, jsonify, render_template, request, session, redirect, Response
 
 # Agregar directorio actual al path para importar common
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +30,17 @@ ACTIVOS_DISPONIBLES = common.ACTIVOS
 
 # Archivo de estado de notificaciones
 NOTIFY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
+
+# ==========================================
+# SSE BROADCASTER (notificaciones en tiempo real)
+# ==========================================
+import json
+from queue import Queue
+
+SSE_CLIENTS = []
+SSE_LOCK = threading.Lock()
+LAST_EVENT_ID = 0
+LAST_EVENT_CIERRE = None
 
 # Mapeo de símbolos del bot a Binance
 SYMBOL_MAP = {
@@ -179,6 +190,28 @@ def api_perfil():
         'ganancia_trade': meta['ganancia_trade'] if meta else None,
         'fecha_saldo': None
     })
+
+
+def registrar_cliente_sse():
+    q = Queue()
+    with SSE_LOCK:
+        SSE_CLIENTS.append(q)
+    return q
+
+
+def desregistrar_cliente_sse(q):
+    with SSE_LOCK:
+        if q in SSE_CLIENTS:
+            SSE_CLIENTS.remove(q)
+
+
+def broadcast_senal(evento):
+    with SSE_LOCK:
+        for q in SSE_CLIENTS:
+            try:
+                q.put_nowait(evento)
+            except Exception:
+                pass
 
 
 # ==========================================
@@ -831,6 +864,129 @@ def api_notifications_toggle():
 
 
 # ==========================================
+# SSE: NOTIFICACIONES EN TIEMPO REAL
+# ==========================================
+BROADCAST_INTERVAL = 3  # segundos
+
+
+def iniciar_broadcast():
+    global LAST_EVENT_ID, LAST_EVENT_CIERRE
+    def loop():
+        global LAST_EVENT_ID, LAST_EVENT_CIERRE
+        time.sleep(5)
+        conn = common.get_db_connection()
+        if not conn:
+            return
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT IFNULL(MAX(id),0) FROM historial_operaciones")
+            LAST_EVENT_ID = cursor.fetchone()[0]
+            cursor.execute("SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') FROM historial_operaciones WHERE fecha_cierre IS NOT NULL")
+            LAST_EVENT_CIERRE = cursor.fetchone()[0]
+        except Exception as e:
+            print(f"⚠️ [broadcast] Error inicializando watermarks: {e}")
+        finally:
+            conn.close()
+
+        while True:
+            time.sleep(BROADCAST_INTERVAL)
+            conn = common.get_db_connection()
+            if not conn:
+                continue
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    FROM historial_operaciones
+                    WHERE id > %s
+                    ORDER BY id
+                """, (LAST_EVENT_ID,))
+                rows = cursor.fetchall()
+
+                if rows:
+                    max_id = rows[-1][0]
+                    for r in rows:
+                        tid, estrategia, simbolo, tipo_op, resultado, entrada, salida, sl, tp = r
+                        if resultado == 'ABIERTA':
+                            tipo = 'apertura'
+                        else:
+                            tipo = 'cierre'
+                        evento = {
+                            'tipo': tipo,
+                            'id': tid,
+                            'estrategia': estrategia,
+                            'simbolo': simbolo,
+                            'tipo_op': tipo_op,
+                            'resultado': resultado,
+                            'precio_entrada': float(entrada) if entrada else None,
+                            'precio_salida': float(salida) if salida else None,
+                            'sl': float(sl) if sl else None,
+                            'tp': float(tp) if tp else None
+                        }
+                        broadcast_senal(evento)
+                    LAST_EVENT_ID = max_id
+
+                cursor.execute("""
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    FROM historial_operaciones
+                    WHERE fecha_cierre > %s AND id <= %s
+                    ORDER BY fecha_cierre
+                """, (LAST_EVENT_CIERRE, LAST_EVENT_ID))
+                rows_cierre = cursor.fetchall()
+                if rows_cierre:
+                    cursor.execute("SELECT MAX(fecha_cierre) FROM historial_operaciones WHERE fecha_cierre > %s", (LAST_EVENT_CIERRE,))
+                    new_cierre = cursor.fetchone()[0]
+                    if new_cierre:
+                        LAST_EVENT_CIERRE = new_cierre
+                    for r in rows_cierre:
+                        tid, estrategia, simbolo, tipo_op, resultado, entrada, salida, sl, tp = r
+                        evento = {
+                            'tipo': 'cierre',
+                            'id': tid,
+                            'estrategia': estrategia,
+                            'simbolo': simbolo,
+                            'tipo_op': tipo_op,
+                            'resultado': resultado,
+                            'precio_entrada': float(entrada) if entrada else None,
+                            'precio_salida': float(salida) if salida else None,
+                            'sl': float(sl) if sl else None,
+                            'tp': float(tp) if tp else None
+                        }
+                        broadcast_senal(evento)
+            except Exception as e:
+                print(f"⚠️ [broadcast] Error en ciclo: {e}")
+            finally:
+                conn.close()
+
+    t = threading.Thread(target=loop, daemon=True, name='broadcast-sse')
+    t.start()
+
+
+@app.route('/api/events')
+def api_events():
+    user = usuario_actual()
+    if not user:
+        return jsonify({'error': 'no autenticado'}), 401
+
+    def generate():
+        q = registrar_cliente_sse()
+        try:
+            while True:
+                try:
+                    evento = q.get(timeout=15)
+                    yield f"event: senal\ndata: {json.dumps(evento)}\n\n"
+                except Exception:
+                    yield ": ping\n\n"
+        finally:
+            desregistrar_cliente_sse(q)
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache',
+                             'X-Accel-Buffering': 'no',
+                             'Connection': 'keep-alive'})
+
+
+# ==========================================
 # WATCHDOG: CIERRE AUTOMÁTICO DE SEÑALES
 # ==========================================
 WATCHDOG_INTERVAL = 30  # segundos
@@ -900,4 +1056,5 @@ def iniciar_watchdog():
 if __name__ == '__main__':
     print("📊 Dashboard Bot Cripto - http://localhost:5000")
     iniciar_watchdog()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    iniciar_broadcast()
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
