@@ -135,7 +135,7 @@ def analizar_estrategia(simbolo):
             if cierre:
                 common.registrar_cierre(op['id'], precio_actual, res)
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE MORA {common.icono_cierre(res)} ({simbolo})*\nMotivo: {res}\nPrecio: {precio_actual:.5f}\n"
+                    f"🏁 *CIERRE MORA ({simbolo})*\nMotivo: {res} {common.icono_cierre(res)}\nPrecio: {precio_actual:.5f}\n"
                     f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
 

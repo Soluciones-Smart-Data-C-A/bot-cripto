@@ -130,7 +130,7 @@ def analizar_apertura_ny(simbolo):
             if cerrar:
                 common.registrar_cierre(op['id'], p_actual, res)
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE NY OPEN {common.icono_cierre(res)} ({simbolo})*\nMotivo: {res}\nPrecio: {p_actual:.5f}\n"
+                    f"🏁 *CIERRE NY OPEN ({simbolo})*\nMotivo: {res} {common.icono_cierre(res)}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
                 del rangos_dia[simbolo]  # Una operación por día según la estrategia

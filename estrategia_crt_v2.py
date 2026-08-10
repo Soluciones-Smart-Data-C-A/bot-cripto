@@ -158,7 +158,7 @@ def gestionar_operaciones():
             if cerrar:
                 common.registrar_cierre(op['id'], p_actual, msg)
                 common.enviar_telegram(ESTRATEGIA, op['simbolo'],
-                    f"🏁 *CIERRE CRT {common.icono_cierre(msg)} ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
+                    f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg} {common.icono_cierre(msg)}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 operaciones_activas.remove(op)
         except Exception as e:

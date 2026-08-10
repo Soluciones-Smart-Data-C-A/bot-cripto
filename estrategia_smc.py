@@ -211,7 +211,7 @@ def gestionar_operaciones():
             if cerrar:
                 common.registrar_cierre(op['id'], p_actual, msg)
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE SMC {common.icono_cierre(msg)} ({simbolo})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
+                    f"🏁 *CIERRE SMC ({simbolo})*\nMotivo: {msg} {common.icono_cierre(msg)}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
 
