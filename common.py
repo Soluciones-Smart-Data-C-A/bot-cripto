@@ -157,10 +157,16 @@ def inicializar_db():
                 chat_id VARCHAR(50) PRIMARY KEY,
                 username VARCHAR(100),
                 first_name VARCHAR(100),
+                photo_url VARCHAR(500),
                 meta_pct FLOAT DEFAULT 5.0,
                 fecha_alta DATETIME DEFAULT NOW()
             )
         """)
+
+        try:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN photo_url VARCHAR(500) AFTER first_name")
+        except Error:
+            pass  # Ya existe
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS preferencias_notificaciones (
@@ -204,7 +210,7 @@ def obtener_suscriptores():
             conn.close()
     return ids
 
-def registrar_usuario(chat_id, username=None, first_name=None):
+def registrar_usuario(chat_id, username=None, first_name=None, photo_url=None):
     """Registra o actualiza un usuario de Telegram (auto-registro desde el login web)."""
     conn = get_db_connection()
     if not conn:
@@ -212,10 +218,10 @@ def registrar_usuario(chat_id, username=None, first_name=None):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO usuarios (chat_id, username, first_name)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name)
-        """, (str(chat_id), username, first_name))
+            INSERT INTO usuarios (chat_id, username, first_name, photo_url)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name), photo_url = VALUES(photo_url)
+        """, (str(chat_id), username, first_name, photo_url))
         conn.commit()
         return True
     except Error as e:
@@ -230,10 +236,10 @@ def obtener_usuario(chat_id):
         return None
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT chat_id, username, first_name FROM usuarios WHERE chat_id = %s", (str(chat_id),))
+        cursor.execute("SELECT chat_id, username, first_name, photo_url FROM usuarios WHERE chat_id = %s", (str(chat_id),))
         r = cursor.fetchone()
         if r:
-            return {'chat_id': str(r[0]), 'username': r[1], 'first_name': r[2]}
+            return {'chat_id': str(r[0]), 'username': r[1], 'first_name': r[2], 'photo_url': r[3]}
         return None
     except Error as e:
         print(f"❌ Error obteniendo usuario: {e}")

@@ -130,6 +130,20 @@
         .page-btn.active { background: #58a6ff22; color: #58a6ff; border-color: #58a6ff; }
         .page-dots { color: #484f58; padding: 4px 6px; }
 
+        /* Menú de usuario */
+        .user-menu { position: relative; }
+        .user-chip-btn { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 10px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; }
+        .user-chip-btn:hover { border-color: #58a6ff; }
+        .user-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #21262d; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #58a6ff; overflow: hidden; }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .user-name { font-size: 13px; color: #e1e4e8; }
+        .user-chevron { font-size: 10px; color: #8b949e; transition: transform 0.2s; }
+        .user-menu.open .user-chevron { transform: rotate(180deg); }
+        .user-dropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #161b22; border: 1px solid #30363d; border-radius: 8px; min-width: 180px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow: hidden; }
+        .user-menu.open .user-dropdown { display: block; }
+        .user-dropdown button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; background: none; border: none; color: #e1e4e8; font-size: 13px; cursor: pointer; text-align: left; }
+        .user-dropdown button:hover { background: #1f6feb; }
+
         /* Carrusel trades abiertos */
         .carousel-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
         .carousel { display: flex; gap: 12px; min-width: min-content; }
@@ -269,15 +283,23 @@
             <h1 style="margin:0;">📊 Bot Cripto - Dashboard</h1>
             <div style="display:flex;align-items:center;gap:15px;">
                 <a href="/estrategias" style="color:#8b949e;text-decoration:none;font-size:14px;padding:8px 14px;border:1px solid #30363d;border-radius:6px;background:#161b22;">📚 Estrategias</a>
-                <span id="user-chip" style="font-size:14px;color:#8b949e;"></span>
-                <button class="btn-action btn-refresh" onclick="abrirConfigNotif()">⚙️ Notif</button>
-                <button class="btn-action btn-refresh" onclick="logout()">Salir</button>
                 <div class="auto-refresh-group">
-                <button class="btn-action btn-refresh" onclick="setAutoRefresh(1)" id="refresh-1">1m</button>
-                <button class="btn-action btn-refresh" onclick="setAutoRefresh(5)" id="refresh-5">5m</button>
-                <button class="btn-action btn-refresh" onclick="setAutoRefresh(30)" id="refresh-30">30m</button>
-                <button class="btn-action btn-refresh" onclick="setAutoRefresh(60)" id="refresh-60">1h</button>
-            </div>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(1)" id="refresh-1">1m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(5)" id="refresh-5">5m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(30)" id="refresh-30">30m</button>
+                    <button class="btn-action btn-refresh" onclick="setAutoRefresh(60)" id="refresh-60">1h</button>
+                </div>
+                <div class="user-menu" id="user-menu">
+                    <div class="user-chip-btn" onclick="toggleUserMenu()">
+                        <div class="user-avatar" id="user-avatar"></div>
+                        <span class="user-name" id="user-name"></span>
+                        <span class="user-chevron">▾</span>
+                    </div>
+                    <div class="user-dropdown">
+                        <button onclick="abrirConfigNotif()">⚙️ Configuración</button>
+                        <button onclick="logout()">🚪 Salir</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -435,7 +457,7 @@
                     <div class="pref-grid" id="pref-activos"></div>
                 </div>
             </div>
-            <div class="pref-group">
+            <div class="pref-group" style="margin-top:18px;">
                 <h3>🎯 Meta diaria</h3>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                     <input type="number" id="pref-meta-pct" min="0.5" max="20" step="0.5" value="5" oninput="actualizarPreviewMeta()" style="width:90px;padding:8px;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;">
@@ -598,8 +620,14 @@
                     return;
                 }
                 currentUser = await resp.json();
-                document.getElementById('user-chip').textContent =
-                    currentUser.first_name || currentUser.username || currentUser.chat_id;
+                const displayName = currentUser.first_name || currentUser.username || currentUser.chat_id;
+                document.getElementById('user-name').textContent = displayName;
+                const avatarEl = document.getElementById('user-avatar');
+                if (currentUser.photo_url) {
+                    avatarEl.innerHTML = `<img src="${currentUser.photo_url}" alt="${displayName}">`;
+                } else {
+                    avatarEl.textContent = displayName.charAt(0).toUpperCase();
+                }
                 document.getElementById('login-screen').style.display = 'none';
                 document.querySelector('.container').style.display = '';
                 loadFilters();
@@ -620,6 +648,17 @@
                 autoRefreshInterval = null;
             }
         }
+
+        function toggleUserMenu() {
+            document.getElementById('user-menu').classList.toggle('open');
+        }
+
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('user-menu');
+            if (menu && !menu.contains(e.target)) {
+                menu.classList.remove('open');
+            }
+        });
 
         function logout() {
             window.location.href = '/logout';

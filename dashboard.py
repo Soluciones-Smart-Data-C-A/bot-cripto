@@ -142,7 +142,7 @@ def auth_tg():
         return redirect('/')
 
     # Auto-registro del usuario como suscriptor
-    common.registrar_usuario(params['id'], params.get('username'), params.get('first_name'))
+    common.registrar_usuario(params['id'], params.get('username'), params.get('first_name'), params.get('photo_url'))
     session['chat_id'] = str(params['id'])
     return redirect('/')
 
