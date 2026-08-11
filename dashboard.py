@@ -269,30 +269,30 @@ def api_stats():
 
         exitosas_globales = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
-        # Exitosas del día (cerrados hoy)
-        cursor.execute("""
+        # Exitosas del día (cerrados hoy, con mismos filtros)
+        cursor.execute(f"""
             SELECT
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins_hoy,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses_hoy
             FROM historial_operaciones
-            WHERE fecha_cierre >= CURDATE()
-        """)
+            WHERE {where_sql} AND fecha_cierre >= CURDATE()
+        """, params)
         row_dia = cursor.fetchone()
         wins_hoy = row_dia[0] or 0
         losses_hoy = row_dia[1] or 0
         exitosas_dia = (wins_hoy / (wins_hoy + losses_hoy) * 100) if (wins_hoy + losses_hoy) > 0 else 0
 
-        # Mejor par + estrategia (por ganancia total)
-        cursor.execute("""
+        # Mejor par + estrategia (por ganancia total, con mismos filtros)
+        cursor.execute(f"""
             SELECT estrategia, simbolo,
                    SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
                        ELSE precio_entrada - precio_salida END) as ganancia_total
             FROM historial_operaciones
-            WHERE resultado LIKE '%%TP%%'
+            WHERE {where_sql} AND resultado LIKE '%%TP%%'
             GROUP BY estrategia, simbolo
             ORDER BY ganancia_total DESC
             LIMIT 1
-        """)
+        """, params)
         mejor_row = cursor.fetchone()
         mejor_estrategia = mejor_row[0] if mejor_row else '-'
         mejor_activo = mejor_row[1] if mejor_row else '-'
