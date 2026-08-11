@@ -7,6 +7,7 @@ Persistencia unificada en historial_operaciones vía common.
 
 import sys
 import time
+import traceback
 import warnings
 from datetime import datetime
 
@@ -29,20 +30,20 @@ def calcular_sl_tp(tipo, precio):
 
 def analizar_estrategia(simbolo):
     try:
-        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
         trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
         if trades_abiertos:
-            return  # Ya hay trade abierto, no evaluar
+            common.dlog(f"  {simbolo}: trade abierto #{trades_abiertos[0]['id']}, saltando")
+            return
 
-        # Descarga de datos para análisis de tendencia
         df = yf.download(simbolo, period='2d', interval='15m', progress=False, auto_adjust=True)
+        common.dlog(f"  {simbolo}: {len(df)} velas 15m descargadas")
         if df.empty:
+            print(f"⚠️ {simbolo}: 0 velas de yfinance (15m)")
             return
 
         if isinstance(df.columns, pd.MultiIndex):
             df = df.xs(simbolo, axis=1, level=1, drop_level=True).copy()
 
-        # Indicadores de la estrategia
         df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
@@ -52,6 +53,9 @@ def analizar_estrategia(simbolo):
         precio_actual = float(ult['Close'])
         e9_ult, e21_ult = float(ult['EMA9']), float(ult['EMA21'])
         e9_pen, e21_pen = float(pen['EMA9']), float(pen['EMA21'])
+
+        common.dlog(f"  {simbolo}: precio={precio_actual:.5f} | EMA9={e9_ult:.5f} EMA21={e21_ult:.5f} | prev_EMA9={e9_pen:.5f} prev_EMA21={e21_pen:.5f}")
+        common.dlog(f"  {simbolo}: cruce_long={e9_pen <= e21_pen and e9_ult > e21_ult} | cruce_short={e9_pen >= e21_pen and e9_ult < e21_ult}")
 
         # --- LÓGICA DE CRUCE ---
 
@@ -141,14 +145,16 @@ def analizar_estrategia(simbolo):
 
     except Exception as e:
         print(f"⚠️ Error Mora analizando {simbolo}: {e}")
+        traceback.print_exc()
 
 def ejecutar_bot():
     common.inicializar_db()
+    print(f"🚀 {ESTRATEGIA} iniciado | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | ACTIVOS: {len(common.ACTIVOS)} | mercado_abierto: {common.horario_mercado()}")
 
-    # Cerrar trades trabados automáticamente
     cerrados = common.cerrar_trades_trabados(ESTRATEGIA, max_horas=MAX_HORAS_ABIERTO)
+    if cerrados:
+        print(f"🔄 {len(cerrados)} trade(s) cerrados automáticamente al iniciar")
 
-    # Reanudar trades abiertos de BD
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:
         operaciones_activas[t['simbolo']] = {
@@ -160,19 +166,31 @@ def ejecutar_bot():
             'fecha_apertura': t.get('fecha_apertura')
         }
     if trades:
+        print(f"🔄 {len(trades)} trade(s) abierto(s) recuperado(s) de BD")
         common.enviar_telegram(ESTRATEGIA, None,
             f"🔄 *TRADES REANUDADOS (MORA)*\n{len(trades)} operación(es) recuperada(s)")
 
     common.enviar_telegram(ESTRATEGIA, None,
         "📊 *Bot Mora Trader EMA v2.6 Activo*\nEstrategia: Cruce EMA 9/21 (SL/TP 1:3)")
 
+    mercado_anterior = common.horario_mercado()
     while True:
+        mercado_actual = common.horario_mercado()
+        if mercado_actual != mercado_anterior:
+            if mercado_actual:
+                print("🔔 Mercado ABIERTO — escaneando acciones/ETF")
+            else:
+                print("⏰ Mercado CERRADO — pausando acciones/ETF")
+            mercado_anterior = mercado_actual
+
         for activo in common.ACTIVOS:
-            if common.es_accion_o_etf(activo) and not common.horario_mercado():
+            if common.es_accion_o_etf(activo) and not mercado_actual:
+                common.dlog(f"  {activo}: mercado cerrado, saltando")
                 continue
             analizar_estrategia(activo)
             time.sleep(2)
-        # Escaneo cada 5 minutos para velas de 15m
+
+        print(f"💓 Heartbeat MORA {datetime.now().strftime('%H:%M:%S')} [abiertas: {len(operaciones_activas)}]")
         time.sleep(300)
 
 if __name__ == "__main__":

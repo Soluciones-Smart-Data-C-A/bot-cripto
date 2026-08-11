@@ -7,6 +7,7 @@ Persistencia unificada en historial_operaciones vía common.
 
 import sys
 import time
+import traceback
 import warnings
 from datetime import datetime
 
@@ -24,18 +25,20 @@ operaciones_activas = {}
 
 def analizar_apertura_ny(simbolo):
     try:
-        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
         trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
         if trades_abiertos:
-            return  # Ya hay trade abierto, no evaluar
+            common.dlog(f"  {simbolo}: trade abierto #{trades_abiertos[0]['id']}, saltando")
+            return
 
         tz_ny = pytz.timezone('America/New_York')
         ahora_ny = datetime.now(tz_ny)
+        common.dlog(f"  {simbolo}: hora_ny={ahora_ny.strftime('%H:%M:%S')} | tiene_rango={simbolo in rangos_dia}")
 
-        # 1. Definir el Rango de la Vela de las 9:30 AM NY (15 min)
         if ahora_ny.hour == 9 and 45 <= ahora_ny.minute < 50:
             df = yf.download(simbolo, period='1d', interval='15m', progress=False)
+            common.dlog(f"  {simbolo}: {len(df)} velas 15m descargadas (definición rango)")
             if df.empty:
+                print(f"⚠️ {simbolo}: 0 velas de yfinance (15m) - definición rango")
                 return
 
             vela_930 = df.between_time('09:30', '09:31')
@@ -46,26 +49,31 @@ def analizar_apertura_ny(simbolo):
                     'manipulado_alto': False,
                     'manipulado_bajo': False
                 }
+                common.dlog(f"  {simbolo}: RANGO DEFINIDO alto={vela_930['High'].iloc[0]:.2f} bajo={vela_930['Low'].iloc[0]:.2f}")
+            else:
+                common.dlog(f"  {simbolo}: no se encontró vela 9:30 en el datos")
 
-        # 2. Buscar Manipulación y Entrada (Post 9:45 AM NY)
         if simbolo in rangos_dia and (ahora_ny.hour >= 9 and ahora_ny.minute >= 45) and ahora_ny.hour < 12:
             rango = rangos_dia[simbolo]
             df_actual = yf.download(simbolo, period='1d', interval='1m', progress=False)
+            common.dlog(f"  {simbolo}: {len(df_actual)} velas 1m descargadas (evaluación)")
             if df_actual.empty:
+                print(f"⚠️ {simbolo}: 0 velas de yfinance (1m) - evaluación")
                 return
 
             precio_actual = float(df_actual['Close'].iloc[-1])
+            common.dlog(f"  {simbolo}: precio={precio_actual:.2f} | rango={rango['bajo']:.2f}-{rango['alto']:.2f}")
 
-            # Detectar Manipulación Superior (Busca Ventas)
             if precio_actual > rango['alto']:
                 rango['manipulado_alto'] = True
+                common.dlog(f"  {simbolo}: manipulado_alto=True (precio > alto)")
 
-            # Entrada en Venta: Manipuló el alto y vuelve al rango
             if rango['manipulado_alto'] and precio_actual < (rango['alto'] - (rango['alto'] * 0.0001)):
                 if simbolo not in operaciones_activas:
                     sl = precio_actual * 1.002
                     risk = sl - precio_actual
-                    tp = precio_actual - (risk * 3)  # Ratio 1:3
+                    tp = precio_actual - (risk * 3)
+                    common.dlog(f"  {simbolo}: SEÑAL SHORT (manipulación)")
                     id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'SHORT', precio_actual,
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
@@ -80,16 +88,16 @@ def analizar_apertura_ny(simbolo):
                         f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
                         f"Motivo: Recuperación tras manipulación superior.{pos_msg}")
 
-            # Detectar Manipulación Inferior (Busca Compras)
             if precio_actual < rango['bajo']:
                 rango['manipulado_bajo'] = True
+                common.dlog(f"  {simbolo}: manipulado_bajo=True (precio < bajo)")
 
-            # Entrada en Compra: Manipuló el bajo y vuelve al rango
             if rango['manipulado_bajo'] and precio_actual > (rango['bajo'] + (rango['bajo'] * 0.0001)):
                 if simbolo not in operaciones_activas:
                     sl = precio_actual * 0.998
                     risk = precio_actual - sl
-                    tp = precio_actual + (risk * 3)  # Ratio 1:3
+                    tp = precio_actual + (risk * 3)
+                    common.dlog(f"  {simbolo}: SEÑAL LONG (manipulación)")
                     id_op = common.registrar_apertura(ESTRATEGIA, simbolo, 'LONG', precio_actual,
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
@@ -104,7 +112,6 @@ def analizar_apertura_ny(simbolo):
                         f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
                         f"Motivo: Recuperación tras manipulación inferior.{pos_msg}")
 
-        # 3. Gestión de Cierre (Target: extremo opuesto del rango)
         if simbolo in operaciones_activas:
             op = operaciones_activas[simbolo]
             rango = rangos_dia[simbolo]
@@ -117,14 +124,14 @@ def analizar_apertura_ny(simbolo):
             res = ""
 
             if op['tipo'] == 'LONG':
-                if p_actual >= rango['alto']:  # Take Profit en el alto del rango
+                if p_actual >= rango['alto']:
                     cerrar, res = True, "TP: ALTO DEL RANGO ✅"
-                elif p_actual < (op['entrada'] * 0.998):  # Stop Loss
+                elif p_actual < (op['entrada'] * 0.998):
                     cerrar, res = True, "SL: MANIPULACIÓN FALLIDA ❌"
             else:
-                if p_actual <= rango['bajo']:  # Take Profit en el bajo del rango
+                if p_actual <= rango['bajo']:
                     cerrar, res = True, "TP: BAJO DEL RANGO ✅"
-                elif p_actual > (op['entrada'] * 1.002):  # Stop Loss
+                elif p_actual > (op['entrada'] * 1.002):
                     cerrar, res = True, "SL: MANIPULACIÓN FALLIDA ❌"
 
             if cerrar:
@@ -133,34 +140,49 @@ def analizar_apertura_ny(simbolo):
                     f"🏁 *CIERRE NY OPEN ({simbolo})*\nMotivo: {res} {common.icono_cierre(res)}\nPrecio: {p_actual:.5f}\n"
                     f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
-                del rangos_dia[simbolo]  # Una operación por día según la estrategia
+                del rangos_dia[simbolo]
 
     except Exception as e:
         print(f"⚠️ Error en análisis NY: {e}")
+        traceback.print_exc()
 
 def ejecutar_bot():
     common.inicializar_db()
+    print(f"🚀 {ESTRATEGIA} iniciado | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | ACTIVOS: {len(common.ACTIVOS)} | mercado_abierto: {common.horario_mercado()}")
 
-    # Cerrar trades trabados automáticamente
-    common.cerrar_trades_trabados(ESTRATEGIA, max_horas=24)
+    cerrados = common.cerrar_trades_trabados(ESTRATEGIA, max_horas=24)
+    if cerrados:
+        print(f"🔄 {len(cerrados)} trade(s) cerrados automáticamente al iniciar")
 
-    # Reanudar trades abiertos de BD
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:
         operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'], 'id': t['id']}
     if trades:
+        print(f"🔄 {len(trades)} trade(s) abierto(s) recuperado(s) de BD")
         common.enviar_telegram(ESTRATEGIA, None,
             f"🔄 *TRADES REANUDADOS (NY OPEN)*\n{len(trades)} operación(es) recuperada(s)")
 
     common.enviar_telegram(ESTRATEGIA, None,
         "🏛️ *Mora Trader NY Open Activo*\nEsperando vela de las 9:30 AM NY...")
 
+    mercado_anterior = common.horario_mercado()
     while True:
+        mercado_actual = common.horario_mercado()
+        if mercado_actual != mercado_anterior:
+            if mercado_actual:
+                print("🔔 Mercado ABIERTO — escaneando acciones/ETF")
+            else:
+                print("⏰ Mercado CERRADO — pausando acciones/ETF")
+            mercado_anterior = mercado_actual
+
         for activo in common.ACTIVOS:
-            if common.es_accion_o_etf(activo) and not common.horario_mercado():
+            if common.es_accion_o_etf(activo) and not mercado_actual:
+                common.dlog(f"  {activo}: mercado cerrado, saltando")
                 continue
             analizar_apertura_ny(activo)
             time.sleep(1)
+
+        print(f"💓 Heartbeat NY_OPEN {datetime.now().strftime('%H:%M:%S')} [rango definido: {len(rangos_dia)}] [abiertas: {len(operaciones_activas)}]")
         time.sleep(60)
 
 if __name__ == "__main__":

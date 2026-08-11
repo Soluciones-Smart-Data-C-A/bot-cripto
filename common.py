@@ -46,6 +46,14 @@ DB_PORT = int(os.getenv('DB_PORT', 3306))
 DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '')
 
+# Debug verbose (activar con BOT_DEBUG=1 en Coolify → Env Vars)
+DEBUG = os.getenv('BOT_DEBUG', '').strip().lower() in ('1', 'true', 'yes')
+
+def dlog(*args, **kwargs):
+    """Imprime solo si BOT_DEBUG=1."""
+    if DEBUG:
+        print(*args, **kwargs, flush=True)
+
 # Activos monitoreados por todas las estrategias
 ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD', 'SPY', 'QQQ', 'VT', 'VALE', 'PYPL', 'INTC']
 

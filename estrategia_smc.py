@@ -7,6 +7,7 @@ Persistencia unificada en historial_operaciones vía common.
 
 import sys
 import time
+import traceback
 import warnings
 from datetime import datetime
 
@@ -122,13 +123,15 @@ def generate_smc_signals(df):
 
 def analizar_smc(simbolo):
     try:
-        # Verificar si ya hay trade abierto en BD para esta estrategia y símbolo
         trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, simbolo)
         if trades_abiertos:
+            common.dlog(f"  {simbolo}: trade abierto #{trades_abiertos[0]['id']}, saltando")
             return
 
         df = yf.download(simbolo, period='5d', interval='15m', progress=False, auto_adjust=True)
+        common.dlog(f"  {simbolo}: {len(df)} velas 15m descargadas")
         if df.empty:
+            print(f"⚠️ {simbolo}: 0 velas de yfinance (15m)")
             return
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -140,6 +143,8 @@ def analizar_smc(simbolo):
         signal = int(ult['Signal'])
         precio_actual = float(ult['Close'])
 
+        common.dlog(f"  {simbolo}: precio={precio_actual:.5f} | signal={signal}")
+
         if signal == 0:
             return
 
@@ -147,6 +152,8 @@ def analizar_smc(simbolo):
         sl = float(ult['Stop_Loss'])
         tp_1_3 = float(ult['Take_Profit'])
         tp_final = float(ult['TP_Final'])
+
+        common.dlog(f"  {simbolo}: SEÑAL {tipo} | sl={sl:.5f} tp={tp_final:.5f}")
 
         if simbolo in operaciones_activas:
             return
@@ -174,6 +181,7 @@ def analizar_smc(simbolo):
 
     except Exception as e:
         print(f"⚠️ Error SMC analizando {simbolo}: {e}")
+        traceback.print_exc()
 
 
 def gestionar_operaciones():
@@ -217,37 +225,49 @@ def gestionar_operaciones():
 
         except Exception as e:
             print(f"⚠️ Error SMC gestionando {simbolo}: {e}")
+            traceback.print_exc()
 
 
 def ejecutar_bot():
     common.inicializar_db()
+    print(f"🚀 {ESTRATEGIA} iniciado | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | ACTIVOS: {len(common.ACTIVOS)} | mercado_abierto: {common.horario_mercado()}")
 
-    # Cerrar trades trabados automáticamente
-    common.cerrar_trades_trabados(ESTRATEGIA, max_horas=24)
+    cerrados = common.cerrar_trades_trabados(ESTRATEGIA, max_horas=24)
+    if cerrados:
+        print(f"🔄 {len(cerrados)} trade(s) cerrados automáticamente al iniciar")
 
-    # Reanudar trades abiertos de BD
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:
         operaciones_activas[t['simbolo']] = {'tipo': t['tipo'], 'entrada': t['entrada'],
                                               'sl': t['sl'], 'tp': t['tp'], 'id': t['id']}
     if trades:
+        print(f"🔄 {len(trades)} trade(s) abierto(s) recuperado(s) de BD")
         common.enviar_telegram(ESTRATEGIA, None,
             f"🔄 *TRADES REANUDADOS (SMC)*\n{len(trades)} operación(es) recuperada(s)")
 
     common.enviar_telegram(ESTRATEGIA, None,
         "📈 *Bot SMC FVG/BOS Activo*\nEstrategia: Fair Value Gaps + Break of Structure.")
 
+    mercado_anterior = common.horario_mercado()
     while True:
+        mercado_actual = common.horario_mercado()
+        if mercado_actual != mercado_anterior:
+            if mercado_actual:
+                print("🔔 Mercado ABIERTO — escaneando acciones/ETF")
+            else:
+                print("⏰ Mercado CERRADO — pausando acciones/ETF")
+            mercado_anterior = mercado_actual
+
         for activo in common.ACTIVOS:
-            if common.es_accion_o_etf(activo) and not common.horario_mercado():
+            if common.es_accion_o_etf(activo) and not mercado_actual:
+                common.dlog(f"  {activo}: mercado cerrado, saltando")
                 continue
             analizar_smc(activo)
             time.sleep(2)
 
         gestionar_operaciones()
 
-        print(f"💓 Heartbeat SMC {datetime.now().strftime('%H:%M:%S')} "
-              f"[Operaciones activas: {len(operaciones_activas)}]")
+        print(f"💓 Heartbeat SMC {datetime.now().strftime('%H:%M:%S')} [Operaciones activas: {len(operaciones_activas)}]")
 
         time.sleep(60)
 
