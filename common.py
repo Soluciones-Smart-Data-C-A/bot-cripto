@@ -5,7 +5,7 @@ Usado por todas las estrategias del bot (Mora EMA Cross, CRT, NY Open).
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
