@@ -772,7 +772,9 @@ def api_filters():
         estrategias = [r[0] for r in cursor.fetchall()]
 
         cursor.execute("SELECT DISTINCT simbolo FROM historial_operaciones ORDER BY simbolo")
-        simbolos = [r[0] for r in cursor.fetchall()]
+        simbolos_db = [r[0] for r in cursor.fetchall()]
+
+        simbolos = list(dict.fromkeys(simbolos_db + common.ACTIVOS))
 
         return jsonify({
             'estrategias': estrategias,
