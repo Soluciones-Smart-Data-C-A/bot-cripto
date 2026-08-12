@@ -378,7 +378,8 @@ def api_reportes():
             mercado=request.args.get('mercado'),
             tipo=request.args.get('tipo'),
             desde=request.args.get('desde'),
-            hasta=request.args.get('hasta')
+            hasta=request.args.get('hasta'),
+            zona=request.args.get('zona')
         )
         return jsonify(reporte)
     except Exception as e:

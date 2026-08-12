@@ -7,6 +7,7 @@ Usado por el dashboard (ruta /api/reportes).
 """
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import common
 
@@ -15,6 +16,45 @@ DIAS_DB = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sa
 DIAS_DB_TO_IDX = {nombre: i for i, nombre in enumerate(DIAS_DB)}
 
 MIN_TRADES_TOP = 3
+
+# Zona horaria en la que el bot GUARDA los datetimes (Dockerfile: ENV TZ=America/Caracas)
+ZONA_DATOS = 'America/Caracas'
+# Zona horaria por defecto para mostrar los reportes (por usuario)
+ZONA_POR_DEFECTO = 'America/Caracas'
+
+
+def _convertir(fecha_naive, zona=None):
+    """Interpreta un datetime naive como ZONA_DATOS y lo convierte a la zona pedida."""
+    if fecha_naive is None:
+        return None
+    if not zona:
+        zona = ZONA_DATOS
+    try:
+        aware = fecha_naive.replace(tzinfo=ZoneInfo(ZONA_DATOS))
+        return aware.astimezone(ZoneInfo(zona)).replace(tzinfo=None)
+    except Exception as e:
+        print(f"⚠️ Error convirtiendo zona ({zona}): {e}")
+        return fecha_naive
+
+
+def _fetch_cerrados(filtros):
+    """Lee trades cerrados (apertura, resultado, tipo, precios) para agrupar en Python."""
+    conn = common.get_db_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT fecha_apertura, resultado, tipo, precio_entrada, precio_salida
+            FROM historial_operaciones
+            WHERE {filtros[0]}
+        """, filtros[1])
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"❌ Error leyendo trades para reporte: {e}")
+        return []
+    finally:
+        conn.close()
 
 
 def _mercado_sql():
@@ -99,40 +139,66 @@ def _consulta_dimension(select_sql, filtros, extra_params=()):
         conn.close()
 
 
-def analizar_por_hora(filtros):
-    """Frecuencias por hora de apertura (0-23)."""
-    items = _consulta_dimension("HOUR(fecha_apertura)", filtros)
-    por_hora = {int(i['clave']): i for i in items if i['clave'] is not None}
+def analizar_por_hora(filtros, zona=None):
+    """Frecuencias por hora de apertura (0-23), en la zona horaria del usuario."""
+    filas = _fetch_cerrados(filtros)
+    total = [0] * 24
+    wins = [0] * 24
+    losses = [0] * 24
+    pnl = [0.0] * 24
+
+    for fecha_apertura, resultado, tipo, pe, ps in filas:
+        if fecha_apertura is None:
+            continue
+        h = _convertir(fecha_apertura, zona).hour
+        total[h] += 1
+        if resultado and 'TP' in resultado:
+            wins[h] += 1
+        if resultado and 'SL' in resultado:
+            losses[h] += 1
+        if ps is not None and pe is not None:
+            pnl[h] += (ps - pe) if tipo == 'LONG' else (pe - ps)
+
     horas = []
     for h in range(24):
-        if h in por_hora:
-            item = por_hora[h]
-            item['clave'] = f"{h:02d}:00"
-            horas.append(item)
-        else:
-            horas.append({'clave': f"{h:02d}:00", 'total': 0, 'wins': 0,
-                          'losses': 0, 'win_rate': 0.0, 'pnl': 0.0})
+        wr = round((wins[h] / (wins[h] + losses[h]) * 100), 1) if (wins[h] + losses[h]) > 0 else 0.0
+        horas.append({
+            'clave': f"{h:02d}:00",
+            'total': total[h],
+            'wins': wins[h],
+            'losses': losses[h],
+            'win_rate': wr,
+            'pnl': round(pnl[h], 2)
+        })
     return horas
 
 
-def analizar_por_dia(filtros):
-    """Frecuencias por día de la semana (Lun-Dom)."""
-    items = _consulta_dimension("DAYNAME(fecha_apertura)", filtros)
-    por_dia = {}
-    for i in items:
-        idx = DIAS_DB_TO_IDX.get(i['clave'])
-        if idx is not None:
-            por_dia[idx] = i
-    dias = []
+def analizar_por_dia(filtros, zona=None):
+    """Frecuencias por día de la semana (Lun-Dom), en la zona horaria del usuario."""
+    filas = _fetch_cerrados(filtros)
+    items = []
     for idx, nombre in enumerate(DIAS_SEMANA):
-        if idx in por_dia:
-            item = por_dia[idx]
-            item['clave'] = nombre
-            dias.append(item)
-        else:
-            dias.append({'clave': nombre, 'total': 0, 'wins': 0, 'losses': 0,
-                         'win_rate': 0.0, 'pnl': 0.0})
-    return dias
+        items.append({'clave': nombre, 'total': 0, 'wins': 0,
+                      'losses': 0, 'win_rate': 0.0, 'pnl': 0.0})
+
+    for fecha_apertura, resultado, tipo, pe, ps in filas:
+        if fecha_apertura is None:
+            continue
+        idx = _convertir(fecha_apertura, zona).weekday()
+        item = items[idx]
+        item['total'] += 1
+        if resultado and 'TP' in resultado:
+            item['wins'] += 1
+        if resultado and 'SL' in resultado:
+            item['losses'] += 1
+        if ps is not None and pe is not None:
+            item['pnl'] += (ps - pe) if tipo == 'LONG' else (pe - ps)
+
+    for item in items:
+        if (item['wins'] + item['losses']) > 0:
+            item['win_rate'] = round(item['wins'] / (item['wins'] + item['losses']) * 100, 1)
+        item['pnl'] = round(item['pnl'], 2)
+    return items
 
 
 def analizar_por_estrategia(filtros):
@@ -192,10 +258,10 @@ def analizar_rachas(filtros):
         conn.close()
 
 
-def analizar_resumen(filtros):
+def analizar_resumen(filtros, zona=None):
     """Resumen global: win rate, pnl, mejores por dimensión y rachas."""
-    por_hora = analizar_por_hora(filtros)
-    por_dia = analizar_por_dia(filtros)
+    por_hora = analizar_por_hora(filtros, zona)
+    por_dia = analizar_por_dia(filtros, zona)
     por_estrategia = analizar_por_estrategia(filtros)
     por_par = analizar_por_par(filtros)
     por_mercado = analizar_por_mercado(filtros)
@@ -250,15 +316,16 @@ def analizar_resumen(filtros):
 
 
 def generar_reporte(estrategia=None, simbolo=None, mercado=None, tipo=None,
-                    desde=None, hasta=None):
+                    desde=None, hasta=None, zona=None):
     """Genera el reporte completo de frecuencias de ganancias."""
     filtros = _construir_filtros(estrategia, simbolo, mercado, tipo, desde, hasta)
     return {
-        'por_hora': analizar_por_hora(filtros),
-        'por_dia': analizar_por_dia(filtros),
+        'por_hora': analizar_por_hora(filtros, zona),
+        'por_dia': analizar_por_dia(filtros, zona),
         'por_estrategia': analizar_por_estrategia(filtros),
         'por_par': analizar_por_par(filtros),
         'por_mercado': analizar_por_mercado(filtros),
         'por_tipo': analizar_por_tipo(filtros),
-        'resumen': analizar_resumen(filtros)
+        'resumen': analizar_resumen(filtros, zona),
+        'zona': zona or ZONA_POR_DEFECTO
     }
