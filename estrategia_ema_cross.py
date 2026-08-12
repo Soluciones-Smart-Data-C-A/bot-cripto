@@ -129,10 +129,10 @@ def analizar_apertura_ny(simbolo):
                     cerrar, res = True, "SL: MANIPULACIÓN FALLIDA ❌"
 
             if cerrar:
-                common.registrar_cierre(op['id'], p_actual, res)
-                common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE NY OPEN ({simbolo})*\nMotivo: {res} {common.icono_cierre(res)}\nPrecio: {p_actual:.5f}\n"
-                    f"ID: {op['id']}")
+                if common.registrar_cierre(op['id'], p_actual, res):
+                    common.enviar_telegram(ESTRATEGIA, simbolo,
+                        f"🏁 *CIERRE NY OPEN ({simbolo})*\nMotivo: {res}\nPrecio: {p_actual:.5f}\n"
+                        f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
                 del rangos_dia[simbolo]
 

@@ -158,10 +158,10 @@ def gestionar_operaciones():
                     cerrar, msg = True, "SL ❌"
 
             if cerrar:
-                common.registrar_cierre(op['id'], p_actual, msg)
-                common.enviar_telegram(ESTRATEGIA, op['simbolo'],
-                    f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg} {common.icono_cierre(msg)}\nPrecio: {p_actual:.5f}\n"
-                    f"ID: {op['id']}")
+                if common.registrar_cierre(op['id'], p_actual, msg):
+                    common.enviar_telegram(ESTRATEGIA, op['simbolo'],
+                        f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
+                        f"ID: {op['id']}")
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"⚠️ Error CRT gestionando {op['simbolo']}: {e}")

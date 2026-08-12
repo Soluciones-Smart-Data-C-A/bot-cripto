@@ -123,6 +123,11 @@ def estrategias():
     return render_template('estrategias.html')
 
 
+@app.route('/reportes')
+def reportes():
+    return render_template('reportes.html')
+
+
 # ==========================================
 # LOGIN CON TELEGRAM (WIDGET OFICIAL)
 # ==========================================
@@ -358,6 +363,26 @@ def api_stats():
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
+
+
+# ==========================================
+# API: REPORTES DE FRECUENCIAS
+# ==========================================
+@app.route('/api/reportes')
+def api_reportes():
+    import reportes
+    try:
+        reporte = reportes.generar_reporte(
+            estrategia=request.args.get('estrategia'),
+            simbolo=request.args.get('simbolo'),
+            mercado=request.args.get('mercado'),
+            tipo=request.args.get('tipo'),
+            desde=request.args.get('desde'),
+            hasta=request.args.get('hasta')
+        )
+        return jsonify(reporte)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ==========================================
@@ -1023,13 +1048,12 @@ def vigilar_cierres():
                 if not resultado:
                     continue
 
-                common.registrar_cierre(trade_id, precio_actual, resultado)
-                print(f"🏁 [watchdog] Cierre automático {simbolo} #{trade_id}: {resultado} @ {precio_actual:.5f}")
-
-                common.enviar_telegram(estrategia, simbolo,
-                    f"🏁 *CIERRE AUTOMÁTICO ({estrategia})*\n"
-                    f"Par: {simbolo}\nMotivo: {resultado} {common.icono_cierre(resultado)}\n"
-                    f"Precio: {precio_actual:.5f}\nID: {trade_id}")
+                if common.registrar_cierre(trade_id, precio_actual, resultado):
+                    print(f"🏁 [watchdog] Cierre automático {simbolo} #{trade_id}: {resultado} @ {precio_actual:.5f}")
+                    common.enviar_telegram(estrategia, simbolo,
+                        f"🏁 *CIERRE AUTOMÁTICO ({estrategia})*\n"
+                        f"Par: {simbolo}\nMotivo: {resultado} {common.icono_cierre(resultado)}\n"
+                        f"Precio: {precio_actual:.5f}\nID: {trade_id}")
             except Exception as e:
                 print(f"⚠️ [watchdog] Error cerrando {simbolo} #{trade_id}: {e}")
     except Exception as e:

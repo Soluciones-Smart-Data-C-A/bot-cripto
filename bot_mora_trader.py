@@ -131,10 +131,10 @@ def analizar_estrategia(simbolo):
                     cierre, res = True, "CRUCE CONTRARIO 📈"
 
             if cierre:
-                common.registrar_cierre(op['id'], precio_actual, res)
-                common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🏁 *CIERRE MORA ({simbolo})*\nMotivo: {res} {common.icono_cierre(res)}\nPrecio: {precio_actual:.5f}\n"
-                    f"ID: {op['id']}")
+                if common.registrar_cierre(op['id'], precio_actual, res):
+                    common.enviar_telegram(ESTRATEGIA, simbolo,
+                        f"🏁 *CIERRE MORA ({simbolo})*\nMotivo: {res}\nPrecio: {precio_actual:.5f}\n"
+                        f"ID: {op['id']}")
                 del operaciones_activas[simbolo]
 
     except Exception as e:

@@ -25,6 +25,7 @@ COPY bot_mora_trader.py .
 COPY estrategia_ema_cross.py .
 COPY estrategia_smc.py .
 COPY dashboard.py .
+COPY reportes.py .
 COPY bot_telegram_listener.py .
 
 # Copiar templates

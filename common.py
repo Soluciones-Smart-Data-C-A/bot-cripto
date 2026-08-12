@@ -339,17 +339,19 @@ def registrar_apertura(estrategia, simbolo, tipo, precio, sl=None, tp=None,
 def registrar_cierre(id_operacion, precio_salida, resultado):
     conn = get_db_connection()
     if not conn:
-        return
+        return False
     try:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE historial_operaciones
             SET fecha_cierre = %s, precio_salida = %s, resultado = %s
-            WHERE id = %s
+            WHERE id = %s AND resultado = 'ABIERTA'
         """, (datetime.now(), precio_salida, resultado, id_operacion))
         conn.commit()
+        return cursor.rowcount > 0
     except Error as e:
         print(f"❌ Error registrando cierre: {e}")
+        return False
     finally:
         conn.close()
 
@@ -425,7 +427,7 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
                     UPDATE historial_operaciones
                     SET fecha_cierre = NOW(), precio_salida = %s,
                         resultado = 'CERRADO_AUTOMÁTICO'
-                    WHERE id = %s
+                    WHERE id = %s AND resultado = 'ABIERTA'
                 """, (precio, trade_id))
 
                 cerrados.append({
