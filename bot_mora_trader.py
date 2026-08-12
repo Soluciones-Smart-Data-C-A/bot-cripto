@@ -71,16 +71,13 @@ def analizar_estrategia(simbolo):
                     'id': id_op,
                     'fecha_apertura': datetime.now()
                 }
-                pos = common.calcular_posicion(precio_actual, sl, tp)
-                pos_msg = ""
-                if pos:
-                    pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                 common.enviar_telegram(ESTRATEGIA, simbolo,
                     f"🎯 *SEÑAL MORA_EMA_CROSS ({simbolo})*\n"
                     f"Dirección: LONG\n"
                     f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
                     f"ID: {id_op}\n"
-                    f"Motivo: Cruce alcista EMA 9/21{pos_msg}")
+                    f"Motivo: Cruce alcista EMA 9/21",
+                    posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         # 2. Entrada en VENTA
         elif e9_pen >= e21_pen and e9_ult < e21_ult:
@@ -94,16 +91,13 @@ def analizar_estrategia(simbolo):
                     'id': id_op,
                     'fecha_apertura': datetime.now()
                 }
-                pos = common.calcular_posicion(precio_actual, sl, tp)
-                pos_msg = ""
-                if pos:
-                    pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                 common.enviar_telegram(ESTRATEGIA, simbolo,
                     f"🎯 *SEÑAL MORA_EMA_CROSS ({simbolo})*\n"
                     f"Dirección: SHORT\n"
                     f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
                     f"ID: {id_op}\n"
-                    f"Motivo: Cruce bajista EMA 9/21{pos_msg}")
+                    f"Motivo: Cruce bajista EMA 9/21",
+                    posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         # 3. Cierre de operaciones
         if simbolo in operaciones_activas:

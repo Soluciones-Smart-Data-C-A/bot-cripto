@@ -128,15 +128,12 @@ def chequear_entradas():
                                                            sl=sl, tp=tp,
                                                            rango_alto=bot.rango_alto, rango_bajo=bot.rango_bajo)
                 operaciones_activas.append(nueva_op)
-                pos = common.calcular_posicion(p_entrada, sl, tp)
-                pos_msg = ""
-                if pos:
-                    pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                 common.enviar_telegram(ESTRATEGIA, activo,
                     f"🎯 *SEÑAL CRT_V7 ({activo})*\n"
                     f"Dirección: {signal}\n"
                     f"Entrada: {p_entrada:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
-                    f"ID: {nueva_op['id']}{pos_msg}")
+                    f"ID: {nueva_op['id']}",
+                    posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp})
 
 def gestionar_operaciones():
     for op in operaciones_activas[:]:

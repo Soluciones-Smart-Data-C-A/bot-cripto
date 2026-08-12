@@ -666,7 +666,7 @@ def icono_cierre(resultado):
         return '❌'
     return ''
 
-def enviar_telegram(estrategia, simbolo, mensaje):
+def enviar_telegram(estrategia, simbolo, mensaje, posicion=None):
     # Verificar si las notificaciones están desactivadas
     notify_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
     if os.path.exists(notify_file):
@@ -683,12 +683,17 @@ def enviar_telegram(estrategia, simbolo, mensaje):
     for chat_id in ids:
         if not usuario_quiere_notificacion(chat_id, estrategia, simbolo):
             continue
+        texto = mensaje
+        if posicion:
+            pos = calcular_posicion(posicion['entrada'], posicion['sl'], posicion['tp'], chat_id)
+            if pos:
+                texto = f"{mensaje}\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
         message_id = None
         estado = 'ENVIADO'
         try:
             resp = requests.post(
                 url,
-                json={"chat_id": chat_id, "text": mensaje, "parse_mode": "Markdown"},
+                json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown"},
                 timeout=5
             )
             if resp.status_code == 200:
@@ -709,7 +714,7 @@ def enviar_telegram(estrategia, simbolo, mensaje):
                     INSERT INTO telegram_mensajes
                         (chat_id, message_id, estrategia, simbolo, contenido, fecha_envio, estado)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (chat_id, message_id, estrategia, simbolo, mensaje, datetime.now(), estado))
+                """, (chat_id, message_id, estrategia, simbolo, texto, datetime.now(), estado))
                 conn.commit()
             except Error as e:
                 print(f"⚠️ Error guardando mensaje Telegram: {e}")

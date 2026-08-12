@@ -78,15 +78,12 @@ def analizar_apertura_ny(simbolo):
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual, 'id': id_op}
-                    pos = common.calcular_posicion(precio_actual, sl, tp)
-                    pos_msg = ""
-                    if pos:
-                        pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
                         f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
                         f"Dirección: SHORT\n"
                         f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación superior.{pos_msg}")
+                        f"Motivo: Recuperación tras manipulación superior.",
+                        posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
             if precio_actual < rango['bajo']:
                 rango['manipulado_bajo'] = True
@@ -102,15 +99,12 @@ def analizar_apertura_ny(simbolo):
                                                       sl=sl, tp=tp,
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual, 'id': id_op}
-                    pos = common.calcular_posicion(precio_actual, sl, tp)
-                    pos_msg = ""
-                    if pos:
-                        pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
                     common.enviar_telegram(ESTRATEGIA, simbolo,
                         f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
                         f"Dirección: LONG\n"
                         f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación inferior.{pos_msg}")
+                        f"Motivo: Recuperación tras manipulación inferior.",
+                        posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         if simbolo in operaciones_activas:
             op = operaciones_activas[simbolo]

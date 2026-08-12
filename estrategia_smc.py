@@ -166,10 +166,6 @@ def analizar_smc(simbolo):
         operaciones_activas[simbolo] = {'tipo': tipo, 'entrada': precio_actual,
                                          'sl': sl, 'tp': tp_final, 'id': id_op}
 
-        pos = common.calcular_posicion(precio_actual, sl, tp_final)
-        pos_msg = ""
-        if pos:
-            pos_msg = f"\n📐 Invertir: ${pos['usd_invertir']:.0f} | Riesgo: -${pos['perdida']:.2f} | Ganancia: +${pos['ganancia']:.2f}"
         common.enviar_telegram(ESTRATEGIA, simbolo,
             f"🎯 *SEÑAL SMC_FVG_BOS ({simbolo})*\n"
             f"Dirección: {tipo}\n"
@@ -177,7 +173,8 @@ def analizar_smc(simbolo):
             f"SL: {sl:.5f}\n"
             f"TP (1:3): {tp_1_3:.5f}\n"
             f"TP Final: {tp_final:.5f}\n"
-            f"ID: {id_op}{pos_msg}")
+            f"ID: {id_op}",
+            posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp_final})
 
     except Exception as e:
         print(f"⚠️ Error SMC analizando {simbolo}: {e}")
