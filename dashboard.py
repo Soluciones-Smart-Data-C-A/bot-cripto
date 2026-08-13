@@ -274,14 +274,15 @@ def api_stats():
 
         exitosas_globales = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
-        # Exitosas del día (cerrados hoy, con mismos filtros)
+        # Exitosas del día (señales abiertas hoy, con mismos filtros)
+        hoy = datetime.now().strftime('%Y-%m-%d')
         cursor.execute(f"""
             SELECT
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins_hoy,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses_hoy
             FROM historial_operaciones
-            WHERE {where_sql} AND fecha_cierre >= CURDATE()
-        """, params)
+            WHERE {where_sql} AND fecha_apertura >= %s
+        """, params + [hoy])
         row_dia = cursor.fetchone()
         wins_hoy = row_dia[0] or 0
         losses_hoy = row_dia[1] or 0
