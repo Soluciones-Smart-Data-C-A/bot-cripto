@@ -115,7 +115,8 @@ def usuario_actual():
 
 @app.route('/')
 def index():
-    return render_template('index.html', bot_username=TELEGRAM_BOT_USERNAME)
+    return render_template('index.html', bot_username=TELEGRAM_BOT_USERNAME,
+                           app_version=os.getenv('APP_COMMIT_HASH', ''))
 
 
 @app.route('/estrategias')

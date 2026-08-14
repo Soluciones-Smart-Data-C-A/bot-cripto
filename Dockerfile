@@ -9,6 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV TZ=America/Caracas
 
+# Hash del commit desplegado (Coolify lo pasa como build arg en deploys de GitHub)
+ARG SOURCE_COMMIT_HASH=unknown
+ENV APP_COMMIT_HASH=${SOURCE_COMMIT_HASH}
+
 # Instalar dependencias de sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
