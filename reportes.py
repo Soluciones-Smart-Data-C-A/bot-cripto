@@ -9,6 +9,8 @@ Usado por el dashboard (ruta /api/reportes).
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import os
+
 import common
 
 DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -17,8 +19,9 @@ DIAS_DB_TO_IDX = {nombre: i for i, nombre in enumerate(DIAS_DB)}
 
 MIN_TRADES_TOP = 3
 
-# Zona horaria en la que el bot GUARDA los datetimes (el contenedor corre en UTC)
-ZONA_DATOS = 'UTC'
+# Zona horaria en la que el bot GUARDA los datetimes: coincide con el TZ del contenedor
+# (las estrategias guardan datetime.now() local). Si Coolify fuerza TZ=UTC, esto es UTC.
+ZONA_DATOS = os.environ.get('TZ', 'UTC') or 'UTC'
 # Zona horaria por defecto para mostrar los reportes (por usuario)
 ZONA_POR_DEFECTO = 'America/Caracas'
 
