@@ -17,8 +17,8 @@ DIAS_DB_TO_IDX = {nombre: i for i, nombre in enumerate(DIAS_DB)}
 
 MIN_TRADES_TOP = 3
 
-# Zona horaria en la que el bot GUARDA los datetimes (Dockerfile: ENV TZ=America/Caracas)
-ZONA_DATOS = 'America/Caracas'
+# Zona horaria en la que el bot GUARDA los datetimes (el contenedor corre en UTC)
+ZONA_DATOS = 'UTC'
 # Zona horaria por defecto para mostrar los reportes (por usuario)
 ZONA_POR_DEFECTO = 'America/Caracas'
 

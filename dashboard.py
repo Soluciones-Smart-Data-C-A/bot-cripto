@@ -274,8 +274,8 @@ def api_stats():
 
         exitosas_globales = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
-        # Exitosas del día (señales abiertas hoy, con mismos filtros)
-        hoy = datetime.now().strftime('%Y-%m-%d')
+        # Exitosas del día (señales abiertas el día local del usuario, con mismos filtros)
+        hoy = request.args.get('hoy') or datetime.now().strftime('%Y-%m-%d')
         cursor.execute(f"""
             SELECT
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins_hoy,

@@ -973,8 +973,14 @@
         // Pagination state
         let currentPage = 1;
 
+        function fechaLocalHoy() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+
         async function loadData() {
             const params = getFilters();
+            params.hoy = fechaLocalHoy();
             const qs = buildQuery(params);
 
             startLoading();
