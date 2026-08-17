@@ -1194,10 +1194,12 @@
                     lineWidth: 2,
                 });
 
-                const data = sorted.map(s => ({
-                    time: s.fecha.split(' ')[0],
-                    value: s.saldo
-                }));
+                const porDia = {};
+                sorted.forEach(s => {
+                    const dia = s.fecha.split(' ')[0];
+                    porDia[dia] = s.saldo;
+                });
+                const data = Object.entries(porDia).map(([time, value]) => ({ time, value }));
 
                 lineSeries.setData(data);
                 saldoChart.timeScale().fitContent();
