@@ -55,10 +55,12 @@ def dlog(*args, **kwargs):
         print(*args, **kwargs, flush=True)
 
 # Activos monitoreados por todas las estrategias
-ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD', 'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC']
+ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD', 'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC',
+           'NKE', 'GOOGL', 'CRWV', 'CCJ', 'COST', 'AAPL', 'ITX', 'MRVL', 'COIN', 'META', 'RTX', 'CVX']
 
 # Acciones y ETFs (ticker yfinance puro, sin -USD)
-ACCIONES_ETF = {'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC'}
+ACCIONES_ETF = {'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC',
+                'NKE', 'GOOGL', 'CRWV', 'CCJ', 'COST', 'AAPL', 'ITX', 'MRVL', 'COIN', 'META', 'RTX', 'CVX'}
 
 def es_accion_o_etf(simbolo):
     return simbolo in ACCIONES_ETF
