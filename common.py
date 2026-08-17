@@ -306,15 +306,15 @@ def guardar_preferencias(chat_id, estrategias=None, simbolos=None):
 
 def usuario_quiere_notificacion(chat_id, estrategia, simbolo):
     """Sin preferencias => recibe todo. Con preferencias => recibe si coincide
-    la estrategia O el símbolo (unión)."""
+    la estrategia Y el símbolo (intersección). Si solo tiene uno, filtra solo por ese."""
     prefs = obtener_preferencias(chat_id)
-    if not prefs['estrategias'] and not prefs['simbolos']:
+    sin_estrategias = not prefs['estrategias']
+    sin_simbolos = not prefs['simbolos']
+    if sin_estrategias and sin_simbolos:
         return True
-    if estrategia and estrategia in prefs['estrategias']:
-        return True
-    if simbolo and simbolo in prefs['simbolos']:
-        return True
-    return False
+    coincide_estrategia = sin_estrategias or (estrategia and estrategia in prefs['estrategias'])
+    coincide_simbolo = sin_simbolos or (simbolo and simbolo in prefs['simbolos'])
+    return coincide_estrategia and coincide_simbolo
 
 def registrar_apertura(estrategia, simbolo, tipo, precio, sl=None, tp=None,
                        rango_alto=None, rango_bajo=None, ema_9=None, ema_21=None):

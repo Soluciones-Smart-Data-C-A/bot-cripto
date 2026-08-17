@@ -70,6 +70,8 @@
         .btn-ghost { background: none; border: 1px solid #30363d; color: #e1e4e8; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .btn-ghost:hover { border-color: #8b949e; }
         .pref-hint { font-size: 12px; color: #484f58; margin-top: 12px; }
+        .btn-toggle-all { background: none; border: 1px solid #30363d; color: #8b949e; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+        .btn-toggle-all:hover { border-color: #58a6ff; color: #58a6ff; }
         #config-saved { color: #3fb950; font-size: 13px; margin-top: 10px; min-height: 18px; }
 
         /* Info del trade */
@@ -486,7 +488,7 @@
                     <div class="pref-grid" id="pref-estrategias"></div>
                 </div>
                 <div class="pref-group">
-                    <h3>Activos (pares)</h3>
+                    <h3 style="display:flex;align-items:center;justify-content:space-between;">Activos (pares) <button class="btn-toggle-all" onclick="toggleAllActivos()" id="btn-toggle-activos">Marcar todos</button></h3>
                     <div class="pref-grid" id="pref-activos"></div>
                 </div>
             </div>
@@ -498,7 +500,7 @@
                 </div>
                 <p id="pref-meta-preview" style="font-size:12px;color:#8b949e;margin-top:6px;"></p>
             </div>
-            <p class="pref-hint">Si no seleccionas nada, recibirás todas las notificaciones. Al seleccionar, solo recibirás las que coincidan con una estrategia o un activo elegido.</p>
+            <p class="pref-hint">Si no seleccionas nada, recibirás todas las notificaciones. Al seleccionar estrategia y activo, solo recibirás las que coincidan con ambos.</p>
             <div id="config-saved"></div>
             <div class="modal-actions">
                 <button class="btn-ghost" onclick="cerrarConfigNotif()">Cancelar</button>
@@ -832,6 +834,8 @@
                 opciones.activos.forEach(a => {
                     contAct.innerHTML += `<label class="pref-item"><input type="checkbox" value="${a}" ${selAct.has(a) ? 'checked' : ''}> ${a}</label>`;
                 });
+                const allActChecked = opciones.activos.length > 0 && opciones.activos.every(a => selAct.has(a));
+                document.getElementById('btn-toggle-activos').textContent = allActChecked ? 'Desmarcar todos' : 'Marcar todos';
 
                 const metaPct = prefs.meta_pct != null ? prefs.meta_pct : 5;
                 document.getElementById('pref-meta-pct').value = metaPct;
@@ -881,6 +885,13 @@
 
         function cerrarConfigNotif() {
             document.getElementById('modal-notif').classList.remove('active');
+        }
+
+        function toggleAllActivos() {
+            const checkboxes = document.querySelectorAll('#pref-activos input[type="checkbox"]');
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            checkboxes.forEach(cb => cb.checked = !allChecked);
+            document.getElementById('btn-toggle-activos').textContent = allChecked ? 'Marcar todos' : 'Desmarcar todos';
         }
 
         async function loadFilters() {
