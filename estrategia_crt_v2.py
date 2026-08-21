@@ -21,6 +21,7 @@ warnings.filterwarnings('ignore')
 ESTRATEGIA = 'CRT_V7'
 operaciones_activas = []
 bias_actual = {}
+rangos_descartados = {}  # {simbolo: {'alto': float, 'bajo': float}} — rangos que ya fallaron con SL
 
 def descargar(simbolo, periodo, intervalo):
     df = yf.download(simbolo, period=periodo, interval=intervalo, progress=False)
@@ -103,6 +104,21 @@ def chequear_entradas():
             common.dlog(f"  {activo}: trade abierto #{trades_abiertos[0]['id']} en BD, saltando")
             continue
 
+        if activo in rangos_descartados:
+            rango = rangos_descartados[activo]
+            try:
+                df_precio = descargar(activo, '1d', '1m')
+                if not df_precio.empty:
+                    p_actual = float(df_precio['Close'].iloc[-1])
+                    if rango['bajo'] and rango['alto'] and rango['bajo'] <= p_actual <= rango['alto']:
+                        common.dlog(f"  {activo}: rango descartado [{rango['bajo']:.2f}-{rango['alto']:.2f}] tras SL, precio {p_actual:.2f} aún dentro, saltando")
+                        continue
+                    else:
+                        common.dlog(f"  {activo}: precio {p_actual:.2f} salió del rango descartado, permitiendo nueva entrada")
+                        del rangos_descartados[activo]
+            except Exception:
+                pass
+
         bot = EstrategiaCRT(activo)
         if bot.establecer_rango_y_bias():
             bias_actual[activo] = bot.bias
@@ -162,6 +178,11 @@ def gestionar_operaciones():
                     common.enviar_telegram(ESTRATEGIA, op['simbolo'],
                         f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
                         f"ID: {op['id']}")
+                if 'SL' in msg:
+                    rangos_descartados[op['simbolo']] = {
+                        'alto': op.get('rango_alto'),
+                        'bajo': op.get('rango_bajo')
+                    }
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"⚠️ Error CRT gestionando {op['simbolo']}: {e}")
