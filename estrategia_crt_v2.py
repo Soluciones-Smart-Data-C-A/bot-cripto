@@ -106,18 +106,20 @@ def chequear_entradas():
 
         if activo in rangos_descartados:
             rango = rangos_descartados[activo]
-            try:
-                df_precio = descargar(activo, '1d', '1m')
-                if not df_precio.empty:
-                    p_actual = float(df_precio['Close'].iloc[-1])
-                    if rango['bajo'] and rango['alto'] and rango['bajo'] <= p_actual <= rango['alto']:
-                        common.dlog(f"  {activo}: rango descartado [{rango['bajo']:.2f}-{rango['alto']:.2f}] tras SL, precio {p_actual:.2f} aún dentro, saltando")
-                        continue
-                    else:
-                        common.dlog(f"  {activo}: precio {p_actual:.2f} salió del rango descartado, permitiendo nueva entrada")
-                        del rangos_descartados[activo]
-            except Exception:
-                pass
+            if rango['bajo'] is not None and rango['alto'] is not None:
+                try:
+                    df_precio = descargar(activo, '1d', '1m')
+                    if not df_precio.empty:
+                        p_actual = float(df_precio['Close'].iloc[-1])
+                        if rango['bajo'] <= p_actual <= rango['alto']:
+                            common.dlog(f"  {activo}: rango descartado [{rango['bajo']:.2f}-{rango['alto']:.2f}] tras SL, precio {p_actual:.2f} aún dentro, saltando")
+                            continue
+                        else:
+                            common.dlog(f"  {activo}: precio {p_actual:.2f} salió del rango descartado, permitiendo nueva entrada")
+                            del rangos_descartados[activo]
+                            common.limpiar_rango_descartado(ESTRATEGIA, activo)
+                except Exception:
+                    pass
 
         bot = EstrategiaCRT(activo)
         if bot.establecer_rango_y_bias():
@@ -179,10 +181,11 @@ def gestionar_operaciones():
                         f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
                         f"ID: {op['id']}")
                 if 'SL' in msg:
-                    rangos_descartados[op['simbolo']] = {
-                        'alto': op.get('rango_alto'),
-                        'bajo': op.get('rango_bajo')
-                    }
+                    rango_a = op.get('rango_alto')
+                    rango_b = op.get('rango_bajo')
+                    if rango_a is not None and rango_b is not None:
+                        rangos_descartados[op['simbolo']] = {'alto': rango_a, 'bajo': rango_b}
+                        common.guardar_rango_descartado(ESTRATEGIA, op['simbolo'], rango_a, rango_b)
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"⚠️ Error CRT gestionando {op['simbolo']}: {e}")
@@ -195,6 +198,10 @@ def ejecutar_bot():
     cerrados = common.cerrar_trades_trabados(ESTRATEGIA, max_horas=24)
     if cerrados:
         print(f"🔄 {len(cerrados)} trade(s) cerrados automáticamente al iniciar")
+
+    rangos_descartados.update(common.cargar_rangos_descartados(ESTRATEGIA))
+    if rangos_descartados:
+        print(f"🔒 {len(rangos_descartados)} rango(s) descartado(s) cargado(s) de BD")
 
     trades = common.obtener_trades_abiertos(ESTRATEGIA)
     for t in trades:
@@ -220,8 +227,8 @@ def ejecutar_bot():
                 print("⏰ Mercado CERRADO — pausando acciones/ETF")
             mercado_anterior = mercado_actual
 
-        chequear_entradas()
         gestionar_operaciones()
+        chequear_entradas()
 
         estado_bias = ' | '.join(f"{a}: {b}" for a, b in bias_actual.items())
         print(f"💓 Heartbeat CRT {datetime.now().strftime('%H:%M:%S')} [Bias: {estado_bias}] [Operaciones activas: {len(operaciones_activas)}]")

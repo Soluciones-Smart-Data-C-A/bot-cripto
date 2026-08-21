@@ -200,6 +200,18 @@ def inicializar_db():
         except Error:
             pass  # La columna ya existe
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rangos_descartados (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                estrategia VARCHAR(30) NOT NULL,
+                simbolo VARCHAR(20) NOT NULL,
+                rango_alto FLOAT,
+                rango_bajo FLOAT,
+                fecha DATETIME DEFAULT NOW(),
+                KEY idx_rango (estrategia, simbolo)
+            )
+        """)
+
         conn.commit()
     except Error as e:
         print(f"❌ Error inicializando tablas: {e}")
@@ -459,6 +471,63 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
         conn.close()
 
     return cerrados
+
+# ==========================================
+# RANGOS DESCARTADOS ( tras SL )
+# ==========================================
+def guardar_rango_descartado(estrategia, simbolo, rango_alto, rango_bajo):
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO rangos_descartados (estrategia, simbolo, rango_alto, rango_bajo, fecha)
+            VALUES (%s, %s, %s, %s, NOW())
+        """, (estrategia, simbolo, rango_alto, rango_bajo))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error guardando rango descartado: {e}")
+        return False
+    finally:
+        conn.close()
+
+def cargar_rangos_descartados(estrategia):
+    conn = get_db_connection()
+    resultado = {}
+    if not conn:
+        return resultado
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT simbolo, rango_alto, rango_bajo FROM rangos_descartados
+            WHERE estrategia = %s
+        """, (estrategia,))
+        for r in cursor.fetchall():
+            resultado[str(r[0])] = {'alto': float(r[1]) if r[1] else None, 'bajo': float(r[2]) if r[2] else None}
+    except Error as e:
+        print(f"❌ Error cargando rangos descartados: {e}")
+    finally:
+        conn.close()
+    return resultado
+
+def limpiar_rango_descartado(estrategia, simbolo):
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM rangos_descartados WHERE estrategia = %s AND simbolo = %s
+        """, (estrategia, simbolo))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error limpiando rango descartado: {e}")
+        return False
+    finally:
+        conn.close()
 
 # ==========================================
 # SALDOS
