@@ -186,6 +186,10 @@ def gestionar_operaciones():
                     if rango_a is not None and rango_b is not None:
                         rangos_descartados[op['simbolo']] = {'alto': rango_a, 'bajo': rango_b}
                         common.guardar_rango_descartado(ESTRATEGIA, op['simbolo'], rango_a, rango_b)
+                elif 'TP' in msg:
+                    if op['simbolo'] in rangos_descartados:
+                        del rangos_descartados[op['simbolo']]
+                        common.limpiar_rango_descartado(ESTRATEGIA, op['simbolo'])
                 operaciones_activas.remove(op)
         except Exception as e:
             print(f"⚠️ Error CRT gestionando {op['simbolo']}: {e}")
