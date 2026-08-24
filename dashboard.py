@@ -25,7 +25,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'cambia-esta-clave-por-seguridad'
 TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '').lstrip('@')
 
 # Estrategias y activos disponibles (para configuración de notificaciones)
-ESTRATEGIAS_DISPONIBLES = ['MORA_EMA_CROSS', 'CRT_V7', 'SMC_FVG_BOS', 'NY_OPEN', 'INSTA_SWEEP_V1']
+ESTRATEGIAS_DISPONIBLES = ['MORA_EMA_CROSS', 'CRT_V7', 'SMC_FVG_BOS', 'NY_OPEN', 'INSTA_SWEEP_V1', 'SANCHEZZFX_SWEEP']
 ACTIVOS_DISPONIBLES = common.ACTIVOS
 
 # Archivo de estado de notificaciones
