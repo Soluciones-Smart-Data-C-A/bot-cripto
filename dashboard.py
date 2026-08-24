@@ -336,6 +336,7 @@ def api_stats():
             ORDER BY estrategia
         """, params_estrat)
         por_estrategia = []
+        estrategias_en_db = set()
         for r in cursor.fetchall():
             estrat_total = r[1] or 0
             estrat_wins = r[2] or 0
@@ -347,6 +348,18 @@ def api_stats():
                 'pnl': round(float(r[3] or 0), 2),
                 'abiertas': int(r[4] or 0)
             })
+            estrategias_en_db.add(r[0])
+
+        for e in ESTRATEGIAS_DISPONIBLES:
+            if e not in estrategias_en_db:
+                por_estrategia.append({
+                    'estrategia': e,
+                    'total': 0,
+                    'wins': 0,
+                    'win_rate': 0.0,
+                    'pnl': 0.0,
+                    'abiertas': 0
+                })
 
         return jsonify({
             'total': total,
@@ -797,7 +810,9 @@ def api_filters():
         cursor = conn.cursor()
 
         cursor.execute("SELECT DISTINCT estrategia FROM historial_operaciones ORDER BY estrategia")
-        estrategias = [r[0] for r in cursor.fetchall()]
+        estrategias_db = [r[0] for r in cursor.fetchall()]
+
+        estrategias = list(dict.fromkeys(estrategias_db + ESTRATEGIAS_DISPONIBLES))
 
         cursor.execute("SELECT DISTINCT simbolo FROM historial_operaciones ORDER BY simbolo")
         simbolos_db = [r[0] for r in cursor.fetchall()]
