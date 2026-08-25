@@ -74,6 +74,13 @@
         .trades-summary .ts-item { display: flex; align-items: center; gap: 6px; }
         .trades-summary .ts-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .trades-summary .ts-label { color: #8b949e; }
+
+        /* Sort headers */
+        th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+        th.sortable:hover { color: #58a6ff; }
+        th.sortable::after { content: ' ⇅'; font-size: 11px; color: #484f58; }
+        th.sortable.asc::after { content: ' ▲'; color: #58a6ff; }
+        th.sortable.desc::after { content: ' ▼'; color: #58a6ff; }
         .btn-toggle-all { background: none; border: 1px solid #30363d; color: #8b949e; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .btn-toggle-all:hover { border-color: #58a6ff; color: #58a6ff; }
         #config-saved { color: #3fb950; font-size: 13px; margin-top: 10px; min-height: 18px; }
@@ -455,15 +462,15 @@
                     <tr>
                         <th>ID</th>
                         <th>Fecha</th>
-                        <th>Par</th>
-                        <th>Estrategia</th>
+                        <th class="sortable" onclick="sortTrades('simbolo')">Par</th>
+                        <th class="sortable" onclick="sortTrades('estrategia')">Estrategia</th>
                         <th>Tipo</th>
                         <th>Entrada</th>
                         <th>SL</th>
                         <th>TP</th>
                         <th>Rango</th>
                         <th>Salida</th>
-                        <th>Resultado</th>
+                        <th class="sortable" onclick="sortTrades('resultado')">Resultado</th>
                         <th>Detalle</th>
                     </tr>
                 </thead>
@@ -1103,6 +1110,29 @@
             }
         }
 
+        let sortState = { key: null, dir: 'asc' };
+
+        function sortTrades(key) {
+            if (sortState.key === key) {
+                sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState = { key, dir: 'asc' };
+            }
+            // Update header classes
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.classList.remove('asc', 'desc');
+            });
+            const thMap = { simbolo: 2, estrategia: 3, resultado: 10 };
+            const ths = document.querySelectorAll('th.sortable');
+            ths.forEach(th => {
+                const idx = Array.from(th.parentElement.children).indexOf(th);
+                if (idx === thMap[key]) {
+                    th.classList.add(sortState.dir);
+                }
+            });
+            loadTrades();
+        }
+
         async function loadTrades(qs) {
             if (!qs) {
                 const params = getFilters();
@@ -1110,7 +1140,18 @@
             }
             const tradesResp = await fetch(`/api/trades?${qs}&page=${currentPage}&per_page=50`);
             const data = await tradesResp.json();
-            const trades = data.trades || [];
+            let trades = data.trades || [];
+
+            // Client-side sort
+            if (sortState.key) {
+                trades.sort((a, b) => {
+                    let va = (a[sortState.key] || '').toString().toLowerCase();
+                    let vb = (b[sortState.key] || '').toString().toLowerCase();
+                    if (va < vb) return sortState.dir === 'asc' ? -1 : 1;
+                    if (va > vb) return sortState.dir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
 
             const tbodyTrades = document.getElementById('table-trades');
             tbodyTrades.innerHTML = '';
