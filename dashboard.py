@@ -229,6 +229,7 @@ def api_stats():
     simbolo = request.args.get('simbolo')
     desde = request.args.get('desde')
     hasta = request.args.get('hasta')
+    resultado_filtro = request.args.get('resultado')
 
     conn = common.get_db_connection()
     if not conn:
@@ -237,8 +238,8 @@ def api_stats():
     try:
         cursor = conn.cursor()
 
-        # Filtros dinámicos
-        where_clauses = ["resultado != 'ABIERTA'"]
+        # Filtros dinámicos (sin WHERE fijo)
+        where_clauses = []
         params = []
 
         if estrategia:
@@ -253,10 +254,17 @@ def api_stats():
         if hasta:
             where_clauses.append("fecha_apertura <= %s")
             params.append(hasta + " 23:59:59")
+        if resultado_filtro:
+            if resultado_filtro == 'TP':
+                where_clauses.append("resultado LIKE '%%TP%%'")
+            elif resultado_filtro == 'SL':
+                where_clauses.append("resultado LIKE '%%SL%%'")
+            elif resultado_filtro == 'ABIERTA':
+                where_clauses.append("resultado = 'ABIERTA'")
 
-        where_sql = " AND ".join(where_clauses)
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-        # Estadísticas generales (cerrados)
+        # Estadísticas generales (todos los trades filtrados)
         cursor.execute(f"""
             SELECT
                 COUNT(*) as total,

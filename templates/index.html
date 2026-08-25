@@ -442,7 +442,13 @@
         <!-- Historial -->
         <div class="section">
             <h2>📋 Historial de Operaciones</h2>
-            <div id="trades-summary" class="trades-summary"></div>
+            <div id="trades-summary" class="trades-summary">
+                <div class="ts-item"><span class="ts-dot" style="background:#58a6ff"></span> <span class="ts-label">Total:</span> <span id="ts-total">-</span></div>
+                <div class="ts-item"><span class="ts-dot" style="background:#3fb950"></span> <span class="ts-label">Ganados:</span> <span id="ts-wins">-</span></div>
+                <div class="ts-item"><span class="ts-dot" style="background:#f85149"></span> <span class="ts-label">Perdidos:</span> <span id="ts-losses">-</span></div>
+                <div class="ts-item"><span class="ts-dot" style="background:#f0883e"></span> <span class="ts-label">Abiertas:</span> <span id="ts-abiertas">-</span></div>
+                <div class="ts-item" style="margin-left:auto;"><span class="ts-label">Win Rate:</span> <span id="ts-winrate">-</span></div>
+            </div>
             <div class="table-wrap">
             <table>
                 <thead>
@@ -1021,18 +1027,13 @@
                     stats.mejor_estrategia + ' + ' + stats.mejor_activo;
 
                 // Resumen del historial filtrado
-                const summary = document.getElementById('trades-summary');
-                if (summary) {
-                    const losses = stats.losses || 0;
-                    const abiertas = stats.abiertas || 0;
-                    summary.innerHTML = `
-                        <div class="ts-item"><span class="ts-dot" style="background:#58a6ff"></span> <span class="ts-label">Total:</span> ${stats.total}</div>
-                        <div class="ts-item"><span class="ts-dot" style="background:#3fb950"></span> <span class="ts-label">Ganados:</span> ${stats.wins}</div>
-                        <div class="ts-item"><span class="ts-dot" style="background:#f85149"></span> <span class="ts-label">Perdidos:</span> ${losses}</div>
-                        <div class="ts-item"><span class="ts-dot" style="background:#f0883e"></span> <span class="ts-label">Abiertas:</span> ${abiertas}</div>
-                        <div class="ts-item" style="margin-left:auto;"><span class="ts-label">Win Rate:</span> <span class="${stats.exitosas_globales >= 50 ? 'positive' : 'negative'}">${stats.exitosas_globales}%</span></div>
-                    `;
-                }
+                document.getElementById('ts-total').textContent = stats.total || 0;
+                document.getElementById('ts-wins').textContent = stats.wins || 0;
+                document.getElementById('ts-losses').textContent = stats.losses || 0;
+                document.getElementById('ts-abiertas').textContent = stats.abiertas || 0;
+                const tsWinrate = document.getElementById('ts-winrate');
+                tsWinrate.textContent = (stats.exitosas_globales || 0) + '%';
+                tsWinrate.className = (stats.exitosas_globales || 0) >= 50 ? 'positive' : 'negative';
 
                 // Tabla estrategias
                 const tbodyEst = document.getElementById('table-estrategias');
