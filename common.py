@@ -208,7 +208,7 @@ def inicializar_db():
                 rango_alto FLOAT,
                 rango_bajo FLOAT,
                 fecha DATETIME DEFAULT NOW(),
-                KEY idx_rango (estrategia, simbolo)
+                UNIQUE KEY idx_rango (estrategia, simbolo)
             )
         """)
 
@@ -378,19 +378,23 @@ def obtener_trades_abiertos(estrategia, simbolo=None):
             cursor = conn.cursor()
             if simbolo:
                 cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
+                           rango_alto, rango_bajo
                     FROM historial_operaciones
                     WHERE estrategia = %s AND simbolo = %s AND resultado = 'ABIERTA'
                 """, (estrategia, simbolo))
             else:
                 cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
+                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
+                           rango_alto, rango_bajo
                     FROM historial_operaciones
                     WHERE estrategia = %s AND resultado = 'ABIERTA'
                 """, (estrategia,))
             trades = [{'id': row[0], 'simbolo': row[1], 'tipo': row[2],
                        'entrada': row[3], 'sl': row[4], 'tp': row[5],
-                       'fecha_apertura': row[6]}
+                       'fecha_apertura': row[6],
+                       'rango_alto': float(row[7]) if row[7] is not None else None,
+                       'rango_bajo': float(row[8]) if row[8] is not None else None}
                       for row in cursor.fetchall()]
         except Error as e:
             print(f"❌ Error obteniendo trades abiertos: {e}")
@@ -484,6 +488,7 @@ def guardar_rango_descartado(estrategia, simbolo, rango_alto, rango_bajo):
         cursor.execute("""
             INSERT INTO rangos_descartados (estrategia, simbolo, rango_alto, rango_bajo, fecha)
             VALUES (%s, %s, %s, %s, NOW())
+            ON DUPLICATE KEY UPDATE rango_alto = VALUES(rango_alto), rango_bajo = VALUES(rango_bajo), fecha = NOW()
         """, (estrategia, simbolo, rango_alto, rango_bajo))
         conn.commit()
         return True

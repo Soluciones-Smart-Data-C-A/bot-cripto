@@ -107,25 +107,32 @@ def chequear_entradas():
         if activo in rangos_descartados:
             rango = rangos_descartados[activo]
             if rango['bajo'] is not None and rango['alto'] is not None:
-                try:
-                    df_precio = descargar(activo, '1d', '1m')
-                    if not df_precio.empty:
-                        p_actual = float(df_precio['Close'].iloc[-1])
-                        if rango['bajo'] <= p_actual <= rango['alto']:
-                            common.dlog(f"  {activo}: rango descartado [{rango['bajo']:.2f}-{rango['alto']:.2f}] tras SL, precio {p_actual:.2f} aún dentro, saltando")
-                            continue
-                        else:
-                            common.dlog(f"  {activo}: precio {p_actual:.2f} salió del rango descartado, permitiendo nueva entrada")
-                            del rangos_descartados[activo]
-                            common.limpiar_rango_descartado(ESTRATEGIA, activo)
-                except Exception:
-                    pass
+                # El rango descartado se limpia si el bot calcula uno distinto
+                # (nueva sesión con highs/lows diferentes) — no se mira el precio
+                pass  # se compara después de calcular el rango actual
 
         bot = EstrategiaCRT(activo)
         if bot.establecer_rango_y_bias():
             bias_actual[activo] = bot.bias
             signal = bot.analizar_manipulacion()
             common.dlog(f"  {activo}: signal={signal}")
+
+            if signal and activo in rangos_descartados:
+                rango_desc = rangos_descartados[activo]
+                if (rango_desc['bajo'] is not None and rango_desc['alto'] is not None
+                        and bot.rango_bajo is not None and bot.rango_alto is not None):
+                    Tol = 0.001  # 0.1%
+                    if (abs(bot.rango_bajo - rango_desc['bajo']) / max(rango_desc['bajo'], 0.001) < Tol
+                            and abs(bot.rango_alto - rango_desc['alto']) / max(rango_desc['alto'], 0.001) < Tol):
+                        common.dlog(f"  {activo}: rango descartado [{rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f}] "
+                                    f"coincide con el actual [{bot.rango_bajo:.2f}-{bot.rango_alto:.2f}], saltando")
+                        signal = None
+                    else:
+                        common.dlog(f"  {activo}: rango cambió (descartado={rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f} "
+                                    f"vs actual={bot.rango_bajo:.2f}-{bot.rango_alto:.2f}), limpiando descarte")
+                        del rangos_descartados[activo]
+                        common.limpiar_rango_descartado(ESTRATEGIA, activo)
+
             if signal:
                 p_entrada = float(descargar(activo, '1d', '1m')['Close'].iloc[-1])
 
@@ -140,7 +147,9 @@ def chequear_entradas():
                     'entrada': p_entrada,
                     'sl': sl,
                     'tp': tp,
-                    'hora': datetime.now()
+                    'hora': datetime.now(),
+                    'rango_alto': bot.rango_alto,
+                    'rango_bajo': bot.rango_bajo
                 }
                 nueva_op['id'] = common.registrar_apertura(ESTRATEGIA, activo, signal, p_entrada,
                                                            sl=sl, tp=tp,
@@ -211,7 +220,8 @@ def ejecutar_bot():
     for t in trades:
         operaciones_activas.append({
             'simbolo': t['simbolo'], 'tipo': t['tipo'], 'entrada': t['entrada'],
-            'sl': t['sl'], 'tp': t['tp'], 'id': t['id']
+            'sl': t['sl'], 'tp': t['tp'], 'id': t['id'],
+            'rango_alto': t.get('rango_alto'), 'rango_bajo': t.get('rango_bajo')
         })
     if trades:
         print(f"🔄 {len(trades)} trade(s) abierto(s) recuperado(s) de BD")

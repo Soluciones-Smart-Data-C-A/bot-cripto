@@ -197,64 +197,72 @@ def chequear_entradas():
             common.dlog(f"  {activo}: trade abierto #{trades_abiertos[0]['id']} en BD, saltando")
             continue
 
-        # Verificar si el rango o activo fue descartado temporalmente por un SL previo
+        # Verificar si el rango fue descartado temporalmente por un SL previo
         if activo in rangos_descartados:
             rango = rangos_descartados[activo]
             if rango['bajo'] is not None and rango['alto'] is not None:
-                try:
-                    df_precio = descargar(activo, '1d', '1m')
-                    if not df_precio.empty:
-                        p_actual = float(df_precio['Close'].iloc[-1])
-                        if rango['bajo'] <= p_actual <= rango['alto']:
-                            common.dlog(f"  {activo}: rango descartado [{rango['bajo']:.2f}-{rango['alto']:.2f}] tras SL, saltando")
-                            continue
-                        else:
-                            common.dlog(f"  {activo}: el precio salió del rango descartado, habilitando nueva señal")
-                            del rangos_descartados[activo]
-                            common.limpiar_rango_descartado(ESTRATEGIA, activo)
-                except Exception:
-                    pass
+                pass  # se compara después de calcular el rango actual
 
         bot = EstrategiaSanchezZFX(activo)
         if bot.identificar_niveles_liquidez():
             senal = bot.analizar_patron_sweep()
             if senal:
-                p_entrada = senal['entrada']
-                sl = senal['sl']
-                tp = senal['tp']
                 tipo = senal['tipo']
 
-                common.dlog(f"  {activo}: 🎯 SEÑAL SANCHEZZFX ({tipo}) | entrada={p_entrada:.5f} sl={sl:.5f} tp={tp:.5f}")
+                # Verificar rango descartado: bloquear si el rango actual coincide con el que falló
+                if activo in rangos_descartados:
+                    rango_desc = rangos_descartados[activo]
+                    if (rango_desc['bajo'] is not None and rango_desc['alto'] is not None
+                            and bot.nivel_bajo is not None and bot.nivel_alto is not None):
+                        Tol = 0.001  # 0.1%
+                        if (abs(bot.nivel_bajo - rango_desc['bajo']) / max(rango_desc['bajo'], 0.001) < Tol
+                                and abs(bot.nivel_alto - rango_desc['alto']) / max(rango_desc['alto'], 0.001) < Tol):
+                            common.dlog(f"  {activo}: rango descartado [{rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f}] "
+                                        f"coincide con el actual [{bot.nivel_bajo:.2f}-{bot.nivel_alto:.2f}], saltando")
+                            senal = None
+                        else:
+                            common.dlog(f"  {activo}: rango cambió (descartado={rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f} "
+                                        f"vs actual={bot.nivel_bajo:.2f}-{bot.nivel_alto:.2f}), limpiando descarte")
+                            del rangos_descartados[activo]
+                            common.limpiar_rango_descartado(ESTRATEGIA, activo)
 
-                nueva_op = {
-                    'simbolo': activo,
-                    'tipo': tipo,
-                    'entrada': p_entrada,
-                    'sl': sl,
-                    'tp': tp,
-                    'hora': datetime.now(),
-                    'rango_alto': bot.nivel_alto,
-                    'rango_bajo': bot.nivel_bajo
-                }
+                if senal:
+                    p_entrada = senal['entrada']
+                    sl = senal['sl']
+                    tp = senal['tp']
+                    tipo = senal['tipo']
 
-                nueva_op['id'] = common.registrar_apertura(
-                    ESTRATEGIA, activo, tipo, p_entrada,
-                    sl=sl, tp=tp,
-                    rango_alto=bot.nivel_alto, rango_bajo=bot.nivel_bajo
-                )
-                operaciones_activas.append(nueva_op)
+                    common.dlog(f"  {activo}: 🎯 SEÑAL SANCHEZZFX ({tipo}) | entrada={p_entrada:.5f} sl={sl:.5f} tp={tp:.5f}")
 
-                common.enviar_telegram(
-                    ESTRATEGIA, activo,
-                    f"⚡ *SEÑAL SWEEP + ENVOLVENTE ({activo})*\n"
-                    f"Estrategia: SanchezZFX\n"
-                    f"Dirección: *{tipo}*\n"
-                    f"Entrada: `{p_entrada:.5f}`\n"
-                    f"SL (Extremo Barrido): `{sl:.5f}`\n"
-                    f"TP (Ratio 1:{RATIO_RISK_REWARD:.1f}): `{tp:.5f}`\n"
-                    f"ID Trade: `{nueva_op['id']}`",
-                    posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp}
-                )
+                    nueva_op = {
+                        'simbolo': activo,
+                        'tipo': tipo,
+                        'entrada': p_entrada,
+                        'sl': sl,
+                        'tp': tp,
+                        'hora': datetime.now(),
+                        'rango_alto': bot.nivel_alto,
+                        'rango_bajo': bot.nivel_bajo
+                    }
+
+                    nueva_op['id'] = common.registrar_apertura(
+                        ESTRATEGIA, activo, tipo, p_entrada,
+                        sl=sl, tp=tp,
+                        rango_alto=bot.nivel_alto, rango_bajo=bot.nivel_bajo
+                    )
+                    operaciones_activas.append(nueva_op)
+
+                    common.enviar_telegram(
+                        ESTRATEGIA, activo,
+                        f"⚡ *SEÑAL SWEEP + ENVOLVENTE ({activo})*\n"
+                        f"Estrategia: SanchezZFX\n"
+                        f"Dirección: *{tipo}*\n"
+                        f"Entrada: `{p_entrada:.5f}`\n"
+                        f"SL (Extremo Barrido): `{sl:.5f}`\n"
+                        f"TP (Ratio 1:{RATIO_RISK_REWARD:.1f}): `{tp:.5f}`\n"
+                        f"ID Trade: `{nueva_op['id']}`",
+                        posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp}
+                    )
 
 
 def gestionar_operaciones():
