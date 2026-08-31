@@ -41,6 +41,11 @@
         .btn-detail:hover { background: #388bfd; }
         .btn-close { background: #f85149; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 4px; }
         .btn-close:hover { background: #da3633; }
+        .btn-close-manual { color: white; border: none; padding: 12px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; flex: 1; }
+        .btn-close-manual.win { background: #238636; }
+        .btn-close-manual.win:hover { background: #2ea043; }
+        .btn-close-manual.loss { background: #da3633; }
+        .btn-close-manual.loss:hover { background: #f85149; }
 
         /* Modal */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
@@ -542,6 +547,22 @@
                 <button class="modal-close" onclick="cerrarPerfil()">&times;</button>
             </div>
             <div id="perfil-content"></div>
+        </div>
+    </div>
+
+    <!-- Modal de cierre manual -->
+    <div class="modal" id="modal-close">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="modal-header">
+                <h2>🛑 Cerrar señal</h2>
+                <button class="modal-close" onclick="cerrarCloseModal()">&times;</button>
+            </div>
+            <p style="font-size:14px;color:#e6edf3;margin-bottom:16px;" id="close-info"></p>
+            <p style="font-size:12px;color:#8b949e;margin-bottom:20px;">Se tomará el precio actual. ¿La señal fue exitosa (llegó a TP) o no (llegó a SL)?</p>
+            <div style="display:flex;gap:12px;">
+                <button class="btn-close-manual win" onclick="confirmarCierre('TP')">✅ Exitoso (TP)</button>
+                <button class="btn-close-manual loss" onclick="confirmarCierre('SL')">❌ No exitoso (SL)</button>
+            </div>
         </div>
     </div>
 
@@ -1297,16 +1318,53 @@
             }
         }
 
-        async function cerrarTrade(tradeId) {
-            if (!confirm('¿Cerrar esta señal? Se tomará el precio actual.')) return;
+        let _closeTradeId = null;
+        let _closeTradeInfo = null;
+
+        function cerrarTrade(tradeId) {
+            _closeTradeId = tradeId;
+            _closeTradeInfo = null;
+            document.getElementById('close-info').textContent = 'Cargando señal #' + tradeId + '…';
+            document.getElementById('modal-close').classList.add('active');
+            mostrarPrecioClose(tradeId);
+        }
+
+        async function mostrarPrecioClose(tradeId) {
             try {
-                const resp = await fetch('/api/trade/' + tradeId + '/close', { method: 'POST' });
+                const resp = await fetch('/api/trade/' + tradeId);
+                if (!resp.ok) return;
+                const t = await resp.json();
+                _closeTradeInfo = t;
+                const badge = t.tipo === 'LONG' ? 'LONG' : 'SHORT';
+                document.getElementById('close-info').innerHTML =
+                    `Señal <b>#${t.id}</b> · ${t.simbolo} (${badge}) · ${t.estrategia}<br>` +
+                    `Entrada: <b>${t.precio_entrada}</b> · SL: ${t.sl ?? '-'} · TP: ${t.tp ?? '-'}`;
+            } catch(e) {
+                document.getElementById('close-info').textContent = 'No se pudo cargar la señal.';
+            }
+        }
+
+        function cerrarCloseModal() {
+            document.getElementById('modal-close').classList.remove('active');
+            _closeTradeId = null;
+        }
+
+        async function confirmarCierre(manualResultado) {
+            const tradeId = _closeTradeId;
+            if (!tradeId) return;
+            try {
+                const resp = await fetch('/api/trade/' + tradeId + '/close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resultado: manualResultado })
+                });
                 const data = await resp.json();
                 if (!resp.ok) {
                     alert('Error: ' + (data.error || 'No se pudo cerrar'));
                     return;
                 }
-                alert(`Señal cerrada en ${data.precio_salida.toFixed(2)} (${data.resultado})`);
+                cerrarCloseModal();
+                alert(`Señal #${tradeId} cerrada en ${data.precio_salida.toFixed(2)} (${data.resultado})`);
                 loadTrades();
                 loadOpenTrades();
             } catch(e) {
@@ -1451,7 +1509,10 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeModal();
+            if (e.key === 'Escape') {
+                closeModal();
+                cerrarCloseModal();
+            }
         });
 
         window.addEventListener('resize', () => {

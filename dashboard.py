@@ -751,7 +751,11 @@ def api_close_trade(trade_id):
         if precio_actual is None:
             precio_actual = float(entrada)
 
-        nuevo_resultado = resultado_sl_tp(tipo, precio_actual, sl, tp) or 'CERRADO_MANUAL'
+        body_resultado = (request.get_json(silent=True) or {}).get('resultado')
+        if body_resultado in ('TP', 'SL'):
+            nuevo_resultado = body_resultado + '_MANUAL'
+        else:
+            nuevo_resultado = resultado_sl_tp(tipo, precio_actual, sl, tp) or 'CERRADO_MANUAL'
 
         common.registrar_cierre(trade_id, precio_actual, nuevo_resultado, estrategia=estrategia)
 
