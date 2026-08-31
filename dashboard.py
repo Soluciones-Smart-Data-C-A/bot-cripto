@@ -783,16 +783,35 @@ def api_open_trades():
 
     try:
         cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura, 'produccion'
-            FROM {common.TABLA_PRODUCCION}
-            WHERE resultado = 'ABIERTA'
-            UNION ALL
-            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura, 'prueba'
-            FROM {common.TABLA_PRUEBA}
-            WHERE resultado = 'ABIERTA'
-            ORDER BY fecha_apertura DESC
-        """)
+        modo = request.args.get('modo', 'produccion')
+        estrategia = request.args.get('estrategia')
+        simbolo = request.args.get('simbolo')
+
+        if modo == 'prueba':
+            tablas = [(common.TABLA_PRUEBA, 'prueba')]
+        elif modo == 'produccion':
+            tablas = [(common.TABLA_PRODUCCION, 'produccion')]
+        else:
+            tablas = [(common.TABLA_PRODUCCION, 'produccion'),
+                      (common.TABLA_PRUEBA, 'prueba')]
+
+        querys = []
+        params = []
+        for tabla, tag in tablas:
+            conds = ["resultado = 'ABIERTA'"]
+            if estrategia:
+                conds.append("estrategia = %s")
+                params.append(estrategia)
+            if simbolo:
+                conds.append("simbolo = %s")
+                params.append(simbolo)
+            querys.append(f"""
+                SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura, '{tag}'
+                FROM {tabla}
+                WHERE {" AND ".join(conds)}
+            """)
+
+        cursor.execute(" UNION ALL ".join(querys) + " ORDER BY fecha_apertura DESC", params)
         trades = []
         for r in cursor.fetchall():
             trade = {

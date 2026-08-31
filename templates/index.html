@@ -1122,7 +1122,9 @@
         async function loadOpenTrades() {
             startLoading();
             try {
-                const resp = await fetch('/api/open-trades');
+                const f = getFilters();
+                const qs = buildQuery({ modo: f.modo, estrategia: f.estrategia, simbolo: f.simbolo });
+                const resp = await fetch('/api/open-trades?' + qs);
                 const data = await resp.json();
                 const container = document.getElementById('carousel-open-trades');
 
