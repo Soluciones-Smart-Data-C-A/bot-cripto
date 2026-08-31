@@ -49,7 +49,7 @@ def _fetch_cerrados(filtros):
         cursor = conn.cursor()
         cursor.execute(f"""
             SELECT fecha_apertura, resultado, tipo, precio_entrada, precio_salida
-            FROM historial_operaciones
+            FROM {filtros[2]}
             WHERE {filtros[0]}
         """, filtros[1])
         return cursor.fetchall()
@@ -67,14 +67,18 @@ def _mercado_sql():
 
 
 def _construir_filtros(estrategia=None, simbolo=None, mercado=None, tipo=None,
-                       desde=None, hasta=None):
-    """Construye WHERE (trades cerrados) + params a partir de los filtros recibidos."""
+                       desde=None, hasta=None, modo='produccion'):
+    """Construye (WHERE cerrados, params, tabla) a partir de los filtros recibidos.
+    Devuelve una tupla de 3: filtros[0]=WHERE, filtros[1]=params, filtros[2]=tabla."""
     where = ["resultado != 'ABIERTA'"]
     params = []
 
     if estrategia:
         where.append("estrategia = %s")
         params.append(estrategia)
+        tabla = common.tabla_estrategia(estrategia)
+    else:
+        tabla = common.TABLA_PRUEBA if modo == 'prueba' else common.TABLA_PRODUCCION
     if simbolo:
         where.append("simbolo = %s")
         params.append(simbolo)
@@ -98,7 +102,7 @@ def _construir_filtros(estrategia=None, simbolo=None, mercado=None, tipo=None,
         where.append("fecha_apertura <= %s")
         params.append(hasta + " 23:59:59")
 
-    return " AND ".join(where), params
+    return " AND ".join(where), params, tabla
 
 
 def _procesar_filas(rows):
@@ -130,7 +134,7 @@ def _consulta_dimension(select_sql, filtros, extra_params=()):
                    SUM(CASE WHEN resultado LIKE '%SL%' THEN 1 ELSE 0 END) as losses,
                    SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
                        ELSE precio_entrada - precio_salida END) as pnl
-            FROM historial_operaciones
+            FROM {filtros[2]}
             WHERE {filtros[0]}
             GROUP BY 1
         """, list(filtros[1]) + list(extra_params))
@@ -239,7 +243,7 @@ def analizar_rachas(filtros):
     try:
         cursor = conn.cursor()
         cursor.execute(f"""
-            SELECT resultado FROM historial_operaciones
+            SELECT resultado FROM {filtros[2]}
             WHERE {filtros[0]}
             ORDER BY fecha_cierre ASC, id ASC
         """, filtros[1])
@@ -281,7 +285,7 @@ def analizar_resumen(filtros, zona=None):
                    SUM(CASE WHEN resultado LIKE '%SL%' THEN 1 ELSE 0 END) as losses,
                    SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
                        ELSE precio_entrada - precio_salida END) as pnl
-            FROM historial_operaciones
+            FROM {filtros[2]}
             WHERE {filtros[0]}
         """, filtros[1])
         total, wins, losses, pnl = cursor.fetchone()
@@ -319,9 +323,9 @@ def analizar_resumen(filtros, zona=None):
 
 
 def generar_reporte(estrategia=None, simbolo=None, mercado=None, tipo=None,
-                    desde=None, hasta=None, zona=None):
+                    desde=None, hasta=None, zona=None, modo='produccion'):
     """Genera el reporte completo de frecuencias de ganancias."""
-    filtros = _construir_filtros(estrategia, simbolo, mercado, tipo, desde, hasta)
+    filtros = _construir_filtros(estrategia, simbolo, mercado, tipo, desde, hasta, modo)
     return {
         'por_hora': analizar_por_hora(filtros, zona),
         'por_dia': analizar_por_dia(filtros, zona),

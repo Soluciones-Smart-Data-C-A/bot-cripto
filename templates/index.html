@@ -352,6 +352,13 @@
         <!-- Filtros -->
         <div class="filters">
             <div>
+                <label>Modo</label>
+                <select id="filter-modo" onchange="onModoChange()">
+                    <option value="produccion">Producción</option>
+                    <option value="prueba">Prueba</option>
+                </select>
+            </div>
+            <div>
                 <label>Estrategia</label>
                 <select id="filter-estrategia" onchange="applyFilters()">
                     <option value="">Todas</option>
@@ -696,6 +703,7 @@
                 document.getElementById('login-screen').style.display = 'none';
                 document.querySelector('.container').style.display = '';
                 loadFilters();
+                updateModoLabel();
                 loadData();
                 loadSaldos();
                 checkNotifyStatus();
@@ -917,7 +925,10 @@
             const data = await resp.json();
 
             const selEst = document.getElementById('filter-estrategia');
-            data.estrategias.forEach(e => {
+            const modo = document.getElementById('filter-modo').value;
+            const estrategias = modo === 'prueba' ? data.estrategias_prueba : data.estrategias_produccion;
+            selEst.innerHTML = '<option value="">Todas</option>';
+            (estrategias || []).forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e;
                 opt.textContent = e;
@@ -933,8 +944,25 @@
             });
         }
 
+        function onModoChange() {
+            loadFilters().then(updateModoLabel);
+            currentPage = 1;
+            loadData();
+        }
+
+        function updateModoLabel() {
+            document.querySelectorAll('.modo-badge').forEach(b => b.remove());
+            const badge = document.createElement('span');
+            badge.className = 'modo-badge';
+            badge.textContent = document.getElementById('filter-modo').value === 'prueba'
+                ? 'MODO PRUEBA' : 'MODO PRODUCCIÓN';
+            badge.style.cssText = 'position:fixed;top:10px;right:10px;z-index:99;padding:6px 12px;border-radius:6px;font-weight:bold;font-size:12px;color:#fff;background:#e3b341;';
+            document.body.appendChild(badge);
+        }
+
         function getFilters() {
             return {
+                modo: document.getElementById('filter-modo').value,
                 estrategia: document.getElementById('filter-estrategia').value,
                 simbolo: document.getElementById('filter-simbolo').value,
                 desde: document.getElementById('filter-desde').value,

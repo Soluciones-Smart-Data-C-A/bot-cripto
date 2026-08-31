@@ -58,6 +58,23 @@ def dlog(*args, **kwargs):
 ACTIVOS = ['BTC-USD', 'SOL-USD', 'HYPE32196-USD', 'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC',
            'NKE', 'GOOGL', 'CRWV', 'CCJ', 'COST', 'AAPL', 'ITX', 'MRVL', 'COIN', 'META', 'RTX', 'CVX']
 
+# ==========================================
+# PRODUCCIÓN vs PRUEBA
+# ==========================================
+# Estrategias en modo prueba: escriben en historial_pruebas, no en producción.
+# Se mantienen corriendo durante un periodo de prueba; luego se decide si paran o pasan a producción.
+TEST_ESTRATEGIAS = ('SMC_FVG_BOS', 'INSTA_SWEEP_V1')
+
+TABLA_PRODUCCION = 'historial_operaciones'
+TABLA_PRUEBA = 'historial_pruebas'
+
+def es_estrategia_prueba(estrategia):
+    return estrategia in TEST_ESTRATEGIAS
+
+def tabla_estrategia(estrategia):
+    """Devuelve la tabla donde vive una estrategia según su modo (producción/prueba)."""
+    return TABLA_PRUEBA if es_estrategia_prueba(estrategia) else TABLA_PRODUCCION
+
 # Acciones y ETFs (ticker yfinance puro, sin -USD)
 ACCIONES_ETF = {'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC',
                 'NKE', 'GOOGL', 'CRWV', 'CCJ', 'COST', 'AAPL', 'ITX', 'MRVL', 'COIN', 'META', 'RTX', 'CVX'}
@@ -137,6 +154,28 @@ def inicializar_db():
             )
         """)
 
+        # Tabla de estrategias en modo prueba (mismo esquema que producción)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_PRUEBA} (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                estrategia VARCHAR(30) NOT NULL,
+                simbolo VARCHAR(20) NOT NULL,
+                tipo VARCHAR(10),
+                fecha_apertura DATETIME,
+                precio_entrada FLOAT,
+                sl FLOAT,
+                tp FLOAT,
+                rango_alto FLOAT,
+                rango_bajo FLOAT,
+                ema_9 FLOAT,
+                ema_21 FLOAT,
+                fecha_cierre DATETIME NULL,
+                precio_salida FLOAT NULL,
+                resultado VARCHAR(50) DEFAULT 'ABIERTA',
+                UNIQUE KEY uk_prueba (estrategia, simbolo, fecha_apertura, precio_entrada, tipo)
+            )
+        """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS telegram_mensajes (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -213,10 +252,51 @@ def inicializar_db():
         """)
 
         conn.commit()
+        migrar_estrategias_a_prueba(conn)
+        conn.commit()
     except Error as e:
         print(f"❌ Error inicializando tablas: {e}")
     finally:
         conn.close()
+
+def migrar_estrategias_a_prueba(conn=None):
+    """Mueve los registros existentes de las estrategias en prueba desde
+    historial_operaciones hacia historial_pruebas. Idempotente (INSERT IGNORE).
+    Deja de contar en producción."""
+    cerrar_conn = conn is None
+    if conn is None:
+        conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        placeholders = ", ".join(["%s"] * len(TEST_ESTRATEGIAS))
+        # Copiar a la tabla de prueba (IGNORE por la unique key natural)
+        cursor.execute(f"""
+            INSERT IGNORE INTO {TABLA_PRUEBA}
+                (estrategia, simbolo, tipo, fecha_apertura, precio_entrada, sl, tp,
+                 rango_alto, rango_bajo, ema_9, ema_21, fecha_cierre, precio_salida, resultado)
+            SELECT estrategia, simbolo, tipo, fecha_apertura, precio_entrada, sl, tp,
+                   rango_alto, rango_bajo, ema_9, ema_21, fecha_cierre, precio_salida, resultado
+            FROM {TABLA_PRODUCCION}
+            WHERE estrategia IN ({placeholders})
+        """, TEST_ESTRATEGIAS)
+        movidos = cursor.rowcount
+        # Borrar los ya migrados de producción
+        cursor.execute(f"""
+            DELETE FROM {TABLA_PRODUCCION}
+            WHERE estrategia IN ({placeholders})
+        """, TEST_ESTRATEGIAS)
+        eliminados = cursor.rowcount
+        if movidos or eliminados:
+            print(f"🔁 Migración adaptación a prueba: {movidos} copiado(s), {eliminados} removido(s) de producción")
+        if cerrar_conn:
+            conn.commit()
+    except Error as e:
+        print(f"❌ Error migrando estrategias a prueba: {e}")
+    finally:
+        if cerrar_conn:
+            conn.close()
 
 def obtener_suscriptores():
     conn = get_db_connection()
@@ -333,10 +413,11 @@ def registrar_apertura(estrategia, simbolo, tipo, precio, sl=None, tp=None,
     conn = get_db_connection()
     if not conn:
         return None
+    tabla = tabla_estrategia(estrategia)
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO historial_operaciones
+        cursor.execute(f"""
+            INSERT INTO {tabla}
                 (estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
                  sl, tp, rango_alto, rango_bajo, ema_9, ema_21)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -350,19 +431,28 @@ def registrar_apertura(estrategia, simbolo, tipo, precio, sl=None, tp=None,
     finally:
         conn.close()
 
-def registrar_cierre(id_operacion, precio_salida, resultado):
+def registrar_cierre(id_operacion, precio_salida, resultado, estrategia=None):
     conn = get_db_connection()
     if not conn:
         return False
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE historial_operaciones
-            SET fecha_cierre = %s, precio_salida = %s, resultado = %s
-            WHERE id = %s AND resultado = 'ABIERTA'
-        """, (datetime.now(), precio_salida, resultado, id_operacion))
+        if estrategia:
+            tablas = [tabla_estrategia(estrategia)]
+        else:
+            tablas = [TABLA_PRODUCCION, TABLA_PRUEBA]
+        actualizados = False
+        for tabla in tablas:
+            cursor.execute(f"""
+                UPDATE {tabla}
+                SET fecha_cierre = %s, precio_salida = %s, resultado = %s
+                WHERE id = %s AND resultado = 'ABIERTA'
+            """, (datetime.now(), precio_salida, resultado, id_operacion))
+            if cursor.rowcount > 0:
+                actualizados = True
+                break
         conn.commit()
-        return cursor.rowcount > 0
+        return actualizados
     except Error as e:
         print(f"❌ Error registrando cierre: {e}")
         return False
@@ -373,33 +463,35 @@ def obtener_trades_abiertos(estrategia, simbolo=None):
     """Obtiene trades abiertos de una estrategia desde la BD."""
     conn = get_db_connection()
     trades = []
-    if conn:
-        try:
-            cursor = conn.cursor()
-            if simbolo:
-                cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
-                           rango_alto, rango_bajo
-                    FROM historial_operaciones
-                    WHERE estrategia = %s AND simbolo = %s AND resultado = 'ABIERTA'
-                """, (estrategia, simbolo))
-            else:
-                cursor.execute("""
-                    SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
-                           rango_alto, rango_bajo
-                    FROM historial_operaciones
-                    WHERE estrategia = %s AND resultado = 'ABIERTA'
-                """, (estrategia,))
-            trades = [{'id': row[0], 'simbolo': row[1], 'tipo': row[2],
-                       'entrada': row[3], 'sl': row[4], 'tp': row[5],
-                       'fecha_apertura': row[6],
-                       'rango_alto': float(row[7]) if row[7] is not None else None,
-                       'rango_bajo': float(row[8]) if row[8] is not None else None}
-                      for row in cursor.fetchall()]
-        except Error as e:
-            print(f"❌ Error obteniendo trades abiertos: {e}")
-        finally:
-            conn.close()
+    if not conn:
+        return trades
+    tabla = tabla_estrategia(estrategia)
+    try:
+        cursor = conn.cursor()
+        if simbolo:
+            cursor.execute(f"""
+                SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
+                       rango_alto, rango_bajo
+                FROM {tabla}
+                WHERE estrategia = %s AND simbolo = %s AND resultado = 'ABIERTA'
+            """, (estrategia, simbolo))
+        else:
+            cursor.execute(f"""
+                SELECT id, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura,
+                       rango_alto, rango_bajo
+                FROM {tabla}
+                WHERE estrategia = %s AND resultado = 'ABIERTA'
+            """, (estrategia,))
+        trades = [{'id': row[0], 'simbolo': row[1], 'tipo': row[2],
+                   'entrada': row[3], 'sl': row[4], 'tp': row[5],
+                   'fecha_apertura': row[6],
+                   'rango_alto': float(row[7]) if row[7] is not None else None,
+                   'rango_bajo': float(row[8]) if row[8] is not None else None}
+                  for row in cursor.fetchall()]
+    except Error as e:
+        print(f"❌ Error obteniendo trades abiertos: {e}")
+    finally:
+        conn.close()
     return trades
 
 def cerrar_trades_trabados(estrategia, max_horas=24):
@@ -412,11 +504,12 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
         return []
 
     cerrados = []
+    tabla = tabla_estrategia(estrategia)
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, simbolo, tipo, precio_entrada, fecha_apertura
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE estrategia = %s AND resultado = 'ABIERTA'
             AND fecha_apertura < NOW() - INTERVAL %s HOUR
         """, (estrategia, max_horas))
@@ -441,8 +534,8 @@ def cerrar_trades_trabados(estrategia, max_horas=24):
 
                 precio = float(df['Close'].iloc[-1])
 
-                cursor.execute("""
-                    UPDATE historial_operaciones
+                cursor.execute(f"""
+                    UPDATE {tabla}
                     SET fecha_cierre = NOW(), precio_salida = %s,
                         resultado = 'CERRADO_AUTOMÁTICO'
                     WHERE id = %s AND resultado = 'ABIERTA'

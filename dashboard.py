@@ -25,8 +25,18 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'cambia-esta-clave-por-seguridad'
 TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '').lstrip('@')
 
 # Estrategias y activos disponibles (para configuración de notificaciones)
-ESTRATEGIAS_DISPONIBLES = ['MORA_EMA_CROSS', 'CRT_V7', 'SMC_FVG_BOS', 'NY_OPEN', 'INSTA_SWEEP_V1', 'SANCHEZZFX_SWEEP']
+ESTRATEGIAS_PRODUCCION = ['MORA_EMA_CROSS', 'CRT_V7', 'NY_OPEN', 'SANCHEZZFX_SWEEP']
+ESTRATEGIAS_PRUEBA = ['SMC_FVG_BOS', 'INSTA_SWEEP_V1']
+ESTRATEGIAS_DISPONIBLES = ESTRATEGIAS_PRODUCCION + ESTRATEGIAS_PRUEBA
 ACTIVOS_DISPONIBLES = common.ACTIVOS
+
+def estrategias_segun_modo(modo):
+    """Según el modo, devuelve la lista de estrategias a consultar.
+    modo='prueba' → solo prueba; cualquier otro → producción."""
+    return ESTRATEGIAS_PRUEBA if modo == 'prueba' else ESTRATEGIAS_PRODUCCION
+
+def tabla_segun_modo(modo):
+    return common.TABLA_PRUEBA if modo == 'prueba' else common.TABLA_PRODUCCION
 
 # Archivo de estado de notificaciones
 NOTIFY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')
@@ -230,6 +240,9 @@ def api_stats():
     desde = request.args.get('desde')
     hasta = request.args.get('hasta')
     resultado_filtro = request.args.get('resultado')
+    modo = request.args.get('modo', 'produccion')  # 'produccion' (default) o 'prueba'
+    tabla = tabla_segun_modo(modo)
+    estrategias_modo = estrategias_segun_modo(modo)
 
     conn = common.get_db_connection()
     if not conn:
@@ -245,6 +258,10 @@ def api_stats():
         if estrategia:
             where_clauses.append("estrategia = %s")
             params.append(estrategia)
+        else:
+            placeholders_modo = ", ".join(["%s"] * len(estrategias_modo))
+            where_clauses.append(f"estrategia IN ({placeholders_modo})")
+            params.extend(estrategias_modo)
         if simbolo:
             where_clauses.append("simbolo = %s")
             params.append(simbolo)
@@ -271,7 +288,7 @@ def api_stats():
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses,
                 SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE {where_sql}
         """, params)
         row = cursor.fetchone()
@@ -289,7 +306,7 @@ def api_stats():
             SELECT
                 SUM(CASE WHEN resultado LIKE '%%TP%%' THEN 1 ELSE 0 END) as wins_hoy,
                 SUM(CASE WHEN resultado LIKE '%%SL%%' THEN 1 ELSE 0 END) as losses_hoy
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE {where_sql} AND fecha_apertura >= %s
         """, params + [hoy])
         row_dia = cursor.fetchone()
@@ -302,7 +319,7 @@ def api_stats():
             SELECT estrategia, simbolo,
                    SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
                        ELSE precio_entrada - precio_salida END) as ganancia_total
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE {where_sql} AND resultado LIKE '%%TP%%'
             GROUP BY estrategia, simbolo
             ORDER BY ganancia_total DESC
@@ -319,6 +336,10 @@ def api_stats():
         if estrategia:
             where_clauses_estrat.append("estrategia = %s")
             params_estrat.append(estrategia)
+        else:
+            placeholders_estrat = ", ".join(["%s"] * len(estrategias_modo))
+            where_clauses_estrat.append(f"estrategia IN ({placeholders_estrat})")
+            params_estrat.extend(estrategias_modo)
         if simbolo:
             where_clauses_estrat.append("simbolo = %s")
             params_estrat.append(simbolo)
@@ -338,7 +359,7 @@ def api_stats():
                 SUM(CASE WHEN tipo = 'LONG' THEN precio_salida - precio_entrada
                     ELSE precio_entrada - precio_salida END) as pnl,
                 SUM(CASE WHEN resultado = 'ABIERTA' THEN 1 ELSE 0 END) as abiertas
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE {where_sql_estrat}
             GROUP BY estrategia
             ORDER BY estrategia
@@ -358,7 +379,7 @@ def api_stats():
             })
             estrategias_en_db.add(r[0])
 
-        for e in ESTRATEGIAS_DISPONIBLES:
+        for e in estrategias_modo:
             if e not in estrategias_en_db:
                 por_estrategia.append({
                     'estrategia': e,
@@ -379,7 +400,8 @@ def api_stats():
             'mejor_estrategia': mejor_estrategia,
             'mejor_activo': mejor_activo,
             'mejor_ganancia': mejor_ganancia,
-            'por_estrategia': por_estrategia
+            'por_estrategia': por_estrategia,
+            'modo': modo
         })
 
     except Exception as e:
@@ -402,7 +424,8 @@ def api_reportes():
             tipo=request.args.get('tipo'),
             desde=request.args.get('desde'),
             hasta=request.args.get('hasta'),
-            zona=request.args.get('zona')
+            zona=request.args.get('zona'),
+            modo=request.args.get('modo', 'produccion')
         )
         return jsonify(reporte)
     except Exception as e:
@@ -421,6 +444,9 @@ def api_trades():
     resultado = request.args.get('resultado')
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
+    modo = request.args.get('modo', 'produccion')
+    tabla = tabla_segun_modo(modo)
+    estrategias_modo = estrategias_segun_modo(modo)
 
     conn = common.get_db_connection()
     if not conn:
@@ -434,6 +460,10 @@ def api_trades():
         if estrategia:
             where_clauses.append("estrategia = %s")
             params.append(estrategia)
+        else:
+            placeholders_modo = ", ".join(["%s"] * len(estrategias_modo))
+            where_clauses.append(f"estrategia IN ({placeholders_modo})")
+            params.extend(estrategias_modo)
         if simbolo:
             where_clauses.append("simbolo = %s")
             params.append(simbolo)
@@ -453,14 +483,14 @@ def api_trades():
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-        cursor.execute(f"SELECT COUNT(*) FROM historial_operaciones WHERE {where_sql}", params)
+        cursor.execute(f"SELECT COUNT(*) FROM {tabla} WHERE {where_sql}", params)
         total_count = cursor.fetchone()[0]
 
         offset = (page - 1) * per_page
         cursor.execute(f"""
             SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
                    sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
-            FROM historial_operaciones
+            FROM {tabla}
             WHERE {where_sql}
             ORDER BY fecha_apertura DESC
             LIMIT %s OFFSET %s
@@ -505,6 +535,9 @@ def api_trades_count():
     desde = request.args.get('desde')
     hasta = request.args.get('hasta')
     resultado = request.args.get('resultado')
+    modo = request.args.get('modo', 'produccion')
+    tabla = tabla_segun_modo(modo)
+    estrategias_modo = estrategias_segun_modo(modo)
 
     conn = common.get_db_connection()
     if not conn:
@@ -518,6 +551,10 @@ def api_trades_count():
         if estrategia:
             where_clauses.append("estrategia = %s")
             params.append(estrategia)
+        else:
+            placeholders_modo = ", ".join(["%s"] * len(estrategias_modo))
+            where_clauses.append(f"estrategia IN ({placeholders_modo})")
+            params.extend(estrategias_modo)
         if simbolo:
             where_clauses.append("simbolo = %s")
             params.append(simbolo)
@@ -536,7 +573,7 @@ def api_trades_count():
                 where_clauses.append("resultado = 'ABIERTA'")
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-        cursor.execute(f"SELECT COUNT(*) FROM historial_operaciones WHERE {where_sql}", params)
+        cursor.execute(f"SELECT COUNT(*) FROM {tabla} WHERE {where_sql}", params)
         count = cursor.fetchone()[0]
         return jsonify({'count': count})
 
@@ -557,13 +594,17 @@ def api_trade_detail(trade_id):
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
-                   sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
-            FROM historial_operaciones
-            WHERE id = %s
-        """, (trade_id,))
-        r = cursor.fetchone()
+        r = None
+        for tabla_detail in [common.TABLA_PRODUCCION, common.TABLA_PRUEBA]:
+            cursor.execute(f"""
+                SELECT id, estrategia, simbolo, tipo, fecha_apertura, precio_entrada,
+                       sl, tp, rango_alto, rango_bajo, fecha_cierre, precio_salida, resultado
+                FROM {tabla_detail}
+                WHERE id = %s
+            """, (trade_id,))
+            r = cursor.fetchone()
+            if r:
+                break
 
         if not r:
             return jsonify({'error': 'Trade no encontrado'}), 404
@@ -688,12 +729,16 @@ def api_close_trade(trade_id):
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, resultado
-            FROM historial_operaciones
-            WHERE id = %s
-        """, (trade_id,))
-        r = cursor.fetchone()
+        r = None
+        for tabla_close in [common.TABLA_PRODUCCION, common.TABLA_PRUEBA]:
+            cursor.execute(f"""
+                SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, resultado
+                FROM {tabla_close}
+                WHERE id = %s
+            """, (trade_id,))
+            r = cursor.fetchone()
+            if r:
+                break
 
         if not r:
             return jsonify({'error': 'Trade no encontrado'}), 404
@@ -708,7 +753,7 @@ def api_close_trade(trade_id):
 
         nuevo_resultado = resultado_sl_tp(tipo, precio_actual, sl, tp) or 'CERRADO_MANUAL'
 
-        common.registrar_cierre(trade_id, precio_actual, nuevo_resultado)
+        common.registrar_cierre(trade_id, precio_actual, nuevo_resultado, estrategia=estrategia)
 
         return jsonify({
             'ok': True,
@@ -734,9 +779,13 @@ def api_open_trades():
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura
-            FROM historial_operaciones
+        cursor.execute(f"""
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura, 'produccion'
+            FROM {common.TABLA_PRODUCCION}
+            WHERE resultado = 'ABIERTA'
+            UNION ALL
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp, fecha_apertura, 'prueba'
+            FROM {common.TABLA_PRUEBA}
             WHERE resultado = 'ABIERTA'
             ORDER BY fecha_apertura DESC
         """)
@@ -751,6 +800,7 @@ def api_open_trades():
                 'sl': float(r[5]) if r[5] else 0,
                 'tp': float(r[6]) if r[6] else 0,
                 'fecha_apertura': r[7].strftime('%Y-%m-%d %H:%M') if r[7] else None,
+                'modo': r[8],
             }
 
             # Obtener precio actual (Binance spot, fallback yfinance)
@@ -816,20 +866,31 @@ def api_filters():
 
     try:
         cursor = conn.cursor()
+        modo = request.args.get('modo', 'produccion')
+        tabla = tabla_segun_modo(modo)
 
-        cursor.execute("SELECT DISTINCT estrategia FROM historial_operaciones ORDER BY estrategia")
+        cursor.execute(f"SELECT DISTINCT estrategia FROM {tabla} ORDER BY estrategia")
         estrategias_db = [r[0] for r in cursor.fetchall()]
 
-        estrategias = list(dict.fromkeys(estrategias_db + ESTRATEGIAS_DISPONIBLES))
+        base = {str(e) for e in estrategias_segun_modo(modo)}
+        estrategias = list(dict.fromkeys(estrategias_db + [e for e in estrategias_segun_modo(modo) if e in base] + [e for e in ESTRATEGIAS_DISPONIBLES if e in base]))
 
-        cursor.execute("SELECT DISTINCT simbolo FROM historial_operaciones ORDER BY simbolo")
+        cursor.execute(f"""
+            SELECT DISTINCT simbolo FROM {common.TABLA_PRODUCCION}
+            UNION
+            SELECT DISTINCT simbolo FROM {common.TABLA_PRUEBA}
+            ORDER BY simbolo
+        """)
         simbolos_db = [r[0] for r in cursor.fetchall()]
 
         simbolos = list(dict.fromkeys(simbolos_db + common.ACTIVOS))
 
         return jsonify({
             'estrategias': estrategias,
-            'simbolos': simbolos
+            'simbolos': simbolos,
+            'modo': modo,
+            'estrategias_produccion': ESTRATEGIAS_PRODUCCION,
+            'estrategias_prueba': ESTRATEGIAS_PRUEBA
         })
 
     except Exception as e:
@@ -892,6 +953,8 @@ def api_preferencias_post():
 def api_opciones():
     return jsonify({
         'estrategias': ESTRATEGIAS_DISPONIBLES,
+        'estrategias_produccion': ESTRATEGIAS_PRODUCCION,
+        'estrategias_prueba': ESTRATEGIAS_PRUEBA,
         'activos': ACTIVOS_DISPONIBLES
     })
 
@@ -932,9 +995,23 @@ def iniciar_broadcast():
             return
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT IFNULL(MAX(id),0) FROM historial_operaciones")
+            cursor.execute(f"""
+                SELECT MAX(mid)
+                FROM (
+                    SELECT IFNULL(MAX(id),0) mid FROM {common.TABLA_PRODUCCION}
+                    UNION ALL
+                    SELECT IFNULL(MAX(id),0) mid FROM {common.TABLA_PRUEBA}
+                ) t
+            """)
             LAST_EVENT_ID = cursor.fetchone()[0]
-            cursor.execute("SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') FROM historial_operaciones WHERE fecha_cierre IS NOT NULL")
+            cursor.execute(f"""
+                SELECT MAX(mfc)
+                FROM (
+                    SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') mfc FROM {common.TABLA_PRODUCCION} WHERE fecha_cierre IS NOT NULL
+                    UNION ALL
+                    SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') mfc FROM {common.TABLA_PRUEBA} WHERE fecha_cierre IS NOT NULL
+                ) t
+            """)
             LAST_EVENT_CIERRE = cursor.fetchone()[0]
         except Exception as e:
             print(f"⚠️ [broadcast] Error inicializando watermarks: {e}")
@@ -948,12 +1025,16 @@ def iniciar_broadcast():
                 continue
             try:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
-                    FROM historial_operaciones
+                    FROM {common.TABLA_PRODUCCION}
+                    WHERE id > %s
+                    UNION ALL
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    FROM {common.TABLA_PRUEBA}
                     WHERE id > %s
                     ORDER BY id
-                """, (LAST_EVENT_ID,))
+                """, (LAST_EVENT_ID, LAST_EVENT_ID))
                 rows = cursor.fetchall()
 
                 if rows:
@@ -979,15 +1060,26 @@ def iniciar_broadcast():
                         broadcast_senal(evento)
                     LAST_EVENT_ID = max_id
 
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
-                    FROM historial_operaciones
+                    FROM {common.TABLA_PRODUCCION}
+                    WHERE fecha_cierre > %s AND id <= %s
+                    UNION ALL
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    FROM {common.TABLA_PRUEBA}
                     WHERE fecha_cierre > %s AND id <= %s
                     ORDER BY fecha_cierre
-                """, (LAST_EVENT_CIERRE, LAST_EVENT_ID))
+                """, (LAST_EVENT_CIERRE, LAST_EVENT_ID, LAST_EVENT_CIERRE, LAST_EVENT_ID))
                 rows_cierre = cursor.fetchall()
                 if rows_cierre:
-                    cursor.execute("SELECT MAX(fecha_cierre) FROM historial_operaciones WHERE fecha_cierre > %s", (LAST_EVENT_CIERRE,))
+                    cursor.execute(f"""
+                        SELECT MAX(mfc)
+                        FROM (
+                            SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') mfc FROM {common.TABLA_PRODUCCION} WHERE fecha_cierre > %s
+                            UNION ALL
+                            SELECT IFNULL(MAX(fecha_cierre),'1970-01-01') mfc FROM {common.TABLA_PRUEBA} WHERE fecha_cierre > %s
+                        ) t
+                    """, (LAST_EVENT_CIERRE, LAST_EVENT_CIERRE))
                     new_cierre = cursor.fetchone()[0]
                     if new_cierre:
                         LAST_EVENT_CIERRE = new_cierre
@@ -1052,9 +1144,13 @@ def vigilar_cierres():
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp
-            FROM historial_operaciones
+            FROM {common.TABLA_PRODUCCION}
+            WHERE resultado = 'ABIERTA'
+            UNION ALL
+            SELECT id, estrategia, simbolo, tipo, precio_entrada, sl, tp
+            FROM {common.TABLA_PRUEBA}
             WHERE resultado = 'ABIERTA'
         """)
         trades = cursor.fetchall()
@@ -1074,7 +1170,7 @@ def vigilar_cierres():
                 if not resultado:
                     continue
 
-                if common.registrar_cierre(trade_id, precio_actual, resultado):
+                if common.registrar_cierre(trade_id, precio_actual, resultado, estrategia=estrategia):
                     print(f"🏁 [watchdog] Cierre automático {simbolo} #{trade_id}: {resultado} @ {precio_actual:.5f}")
                     common.enviar_telegram(estrategia, simbolo,
                         f"🏁 *CIERRE AUTOMÁTICO ({estrategia})*\n"
