@@ -92,75 +92,86 @@ class EstrategiaCRT:
 # ==========================================
 def chequear_entradas():
     for activo in common.ACTIVOS:
-        if common.es_accion_o_etf(activo) and not common.horario_mercado():
-            common.dlog(f"  {activo}: mercado cerrado, saltando")
-            continue
-        if any(op['simbolo'] == activo for op in operaciones_activas):
-            common.dlog(f"  {activo}: trade activo en memoria, saltando")
-            continue
+        try:
+            chequear_activo(activo)
+        except Exception as e:
+            print(f"⚠️ Error CRT procesando {activo}: {e}")
+            traceback.print_exc()
 
-        trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, activo)
-        if trades_abiertos:
-            common.dlog(f"  {activo}: trade abierto #{trades_abiertos[0]['id']} en BD, saltando")
-            continue
+def chequear_activo(activo):
+    if common.es_accion_o_etf(activo) and not common.horario_mercado():
+        common.dlog(f"  {activo}: mercado cerrado, saltando")
+        return
+    if any(op['simbolo'] == activo for op in operaciones_activas):
+        common.dlog(f"  {activo}: trade activo en memoria, saltando")
+        return
 
-        if activo in rangos_descartados:
-            rango = rangos_descartados[activo]
-            if rango['bajo'] is not None and rango['alto'] is not None:
-                # El rango descartado se limpia si el bot calcula uno distinto
-                # (nueva sesión con highs/lows diferentes) — no se mira el precio
-                pass  # se compara después de calcular el rango actual
+    trades_abiertos = common.obtener_trades_abiertos(ESTRATEGIA, activo)
+    if trades_abiertos:
+        common.dlog(f"  {activo}: trade abierto #{trades_abiertos[0]['id']} en BD, saltando")
+        return
 
-        bot = EstrategiaCRT(activo)
-        if bot.establecer_rango_y_bias():
-            bias_actual[activo] = bot.bias
-            signal = bot.analizar_manipulacion()
-            common.dlog(f"  {activo}: signal={signal}")
+    if activo in rangos_descartados:
+        rango = rangos_descartados[activo]
+        if rango['bajo'] is not None and rango['alto'] is not None:
+            # El rango descartado se limpia si el bot calcula uno distinto
+            # (nueva sesión con highs/lows diferentes) — no se mira el precio
+            pass  # se compara después de calcular el rango actual
 
-            if signal and activo in rangos_descartados:
-                rango_desc = rangos_descartados[activo]
-                if (rango_desc['bajo'] is not None and rango_desc['alto'] is not None
-                        and bot.rango_bajo is not None and bot.rango_alto is not None):
-                    Tol = 0.001  # 0.1%
-                    if (abs(bot.rango_bajo - rango_desc['bajo']) / max(rango_desc['bajo'], 0.001) < Tol
-                            and abs(bot.rango_alto - rango_desc['alto']) / max(rango_desc['alto'], 0.001) < Tol):
-                        common.dlog(f"  {activo}: rango descartado [{rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f}] "
-                                    f"coincide con el actual [{bot.rango_bajo:.2f}-{bot.rango_alto:.2f}], saltando")
-                        signal = None
-                    else:
-                        common.dlog(f"  {activo}: rango cambió (descartado={rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f} "
-                                    f"vs actual={bot.rango_bajo:.2f}-{bot.rango_alto:.2f}), limpiando descarte")
-                        del rangos_descartados[activo]
-                        common.limpiar_rango_descartado(ESTRATEGIA, activo)
+    bot = EstrategiaCRT(activo)
+    if bot.establecer_rango_y_bias():
+        bias_actual[activo] = bot.bias
+        signal = bot.analizar_manipulacion()
+        common.dlog(f"  {activo}: signal={signal}")
 
-            if signal:
-                p_entrada = float(descargar(activo, '1d', '1m')['Close'].iloc[-1])
+        if signal and activo in rangos_descartados:
+            rango_desc = rangos_descartados[activo]
+            if (rango_desc['bajo'] is not None and rango_desc['alto'] is not None
+                    and bot.rango_bajo is not None and bot.rango_alto is not None):
+                Tol = 0.001  # 0.1%
+                if (abs(bot.rango_bajo - rango_desc['bajo']) / max(rango_desc['bajo'], 0.001) < Tol
+                        and abs(bot.rango_alto - rango_desc['alto']) / max(rango_desc['alto'], 0.001) < Tol):
+                    common.dlog(f"  {activo}: rango descartado [{rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f}] "
+                                f"coincide con el actual [{bot.rango_bajo:.2f}-{bot.rango_alto:.2f}], saltando")
+                    signal = None
+                else:
+                    common.dlog(f"  {activo}: rango cambió (descartado={rango_desc['bajo']:.2f}-{rango_desc['alto']:.2f} "
+                                f"vs actual={bot.rango_bajo:.2f}-{bot.rango_alto:.2f}), limpiando descarte")
+                    del rangos_descartados[activo]
+                    common.limpiar_rango_descartado(ESTRATEGIA, activo)
 
-                sl = p_entrada * (0.998 if signal == 'LONG' else 1.002)
-                tp = p_entrada * (1.006 if signal == 'LONG' else 0.994)
+        if signal:
+            df_1m = descargar(activo, '1d', '1m')
+            if df_1m is None or df_1m.empty:
+                print(f"⚠️ {activo}: 0 velas 1m de yfinance al confirmar señal, saltando")
+                return
+            p_entrada = float(df_1m['Close'].iloc[-1])
 
-                common.dlog(f"  {activo}: SEÑAL {signal} | entrada={p_entrada:.5f} sl={sl:.5f} tp={tp:.5f}")
+            sl = p_entrada * (0.998 if signal == 'LONG' else 1.002)
+            tp = p_entrada * (1.006 if signal == 'LONG' else 0.994)
 
-                nueva_op = {
-                    'simbolo': activo,
-                    'tipo': signal,
-                    'entrada': p_entrada,
-                    'sl': sl,
-                    'tp': tp,
-                    'hora': datetime.now(),
-                    'rango_alto': bot.rango_alto,
-                    'rango_bajo': bot.rango_bajo
-                }
-                nueva_op['id'] = common.registrar_apertura(ESTRATEGIA, activo, signal, p_entrada,
-                                                           sl=sl, tp=tp,
-                                                           rango_alto=bot.rango_alto, rango_bajo=bot.rango_bajo)
-                operaciones_activas.append(nueva_op)
-                common.enviar_telegram(ESTRATEGIA, activo,
-                    f"🎯 *SEÑAL CRT_V7 ({activo})*\n"
-                    f"Dirección: {signal}\n"
-                    f"Entrada: {p_entrada:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
-                    f"ID: {nueva_op['id']}",
-                    posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp})
+            common.dlog(f"  {activo}: SEÑAL {signal} | entrada={p_entrada:.5f} sl={sl:.5f} tp={tp:.5f}")
+
+            nueva_op = {
+                'simbolo': activo,
+                'tipo': signal,
+                'entrada': p_entrada,
+                'sl': sl,
+                'tp': tp,
+                'hora': datetime.now(),
+                'rango_alto': bot.rango_alto,
+                'rango_bajo': bot.rango_bajo
+            }
+            nueva_op['id'] = common.registrar_apertura(ESTRATEGIA, activo, signal, p_entrada,
+                                                       sl=sl, tp=tp,
+                                                       rango_alto=bot.rango_alto, rango_bajo=bot.rango_bajo)
+            operaciones_activas.append(nueva_op)
+            common.enviar_telegram(ESTRATEGIA, activo,
+                f"🎯 *SEÑAL CRT_V7 ({activo})*\n"
+                f"Dirección: {signal}\n"
+                f"Entrada: {p_entrada:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
+                f"ID: {nueva_op['id']}",
+                posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp})
 
 def gestionar_operaciones():
     for op in operaciones_activas[:]:
@@ -241,8 +252,12 @@ def ejecutar_bot():
                 print("⏰ Mercado CERRADO — pausando acciones/ETF")
             mercado_anterior = mercado_actual
 
-        gestionar_operaciones()
-        chequear_entradas()
+        try:
+            gestionar_operaciones()
+            chequear_entradas()
+        except Exception as e:
+            print(f"⚠️ Error CRT en ciclo principal: {e}")
+            traceback.print_exc()
 
         estado_bias = ' | '.join(f"{a}: {b}" for a, b in bias_actual.items())
         print(f"💓 Heartbeat CRT {datetime.now().strftime('%H:%M:%S')} [Bias: {estado_bias}] [Operaciones activas: {len(operaciones_activas)}]")

@@ -1084,11 +1084,11 @@ def iniciar_broadcast():
                     LAST_EVENT_ID = max_id
 
                 cursor.execute(f"""
-                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp, fecha_cierre
                     FROM {common.TABLA_PRODUCCION}
                     WHERE fecha_cierre > %s AND id <= %s
                     UNION ALL
-                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp
+                    SELECT id, estrategia, simbolo, tipo, resultado, precio_entrada, precio_salida, sl, tp, fecha_cierre
                     FROM {common.TABLA_PRUEBA}
                     WHERE fecha_cierre > %s AND id <= %s
                     ORDER BY fecha_cierre
@@ -1107,7 +1107,7 @@ def iniciar_broadcast():
                     if new_cierre:
                         LAST_EVENT_CIERRE = new_cierre
                     for r in rows_cierre:
-                        tid, estrategia, simbolo, tipo_op, resultado, entrada, salida, sl, tp = r
+                        tid, estrategia, simbolo, tipo_op, resultado, entrada, salida, sl, tp, _ = r
                         evento = {
                             'tipo': 'cierre',
                             'id': tid,
