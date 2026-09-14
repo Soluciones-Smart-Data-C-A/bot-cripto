@@ -222,6 +222,8 @@ def desregistrar_cliente_sse(q):
 
 
 def broadcast_senal(evento):
+    if evento.get('estrategia') and common.es_estrategia_prueba(evento.get('estrategia')):
+        return
     with SSE_LOCK:
         for q in SSE_CLIENTS:
             try:
