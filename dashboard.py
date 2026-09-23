@@ -947,6 +947,7 @@ def api_preferencias_get():
         return jsonify({'error': 'no autenticado'}), 401
     prefs = common.obtener_preferencias(user['chat_id'])
     prefs['meta_pct'] = common.obtener_meta_pct(user['chat_id'])
+    prefs['horario'] = common.obtener_notif_horario(user['chat_id'])
     return jsonify(prefs)
 
 @app.route('/api/preferencias', methods=['POST'])
@@ -969,8 +970,13 @@ def api_preferencias_post():
         if common.guardar_meta_pct(user['chat_id'], pct):
             common.recalcular_ultimo_saldo(user['chat_id'])
 
+    if 'horario' in data:
+        if not common.guardar_notif_horario(user['chat_id'], data['horario']):
+            return jsonify({'error': 'horario debe ser "todo" o "8-17"'}), 400
+
     prefs = common.obtener_preferencias(user['chat_id'])
     prefs['meta_pct'] = common.obtener_meta_pct(user['chat_id'])
+    prefs['horario'] = common.obtener_notif_horario(user['chat_id'])
     return jsonify(prefs)
 
 
@@ -980,7 +986,8 @@ def api_opciones():
         'estrategias': ESTRATEGIAS_DISPONIBLES,
         'estrategias_produccion': ESTRATEGIAS_PRODUCCION,
         'estrategias_prueba': ESTRATEGIAS_PRUEBA,
-        'activos': ACTIVOS_DISPONIBLES
+        'activos': ACTIVOS_DISPONIBLES,
+        'grupos': common.GRUPOS_ACTIVOS
     })
 
 

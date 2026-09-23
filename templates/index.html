@@ -66,6 +66,7 @@
         .pref-groups { display: flex; flex-direction: column; gap: 18px; }
         .pref-group h3 { font-size: 13px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
         .pref-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .pref-grupos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
         .pref-item { display: flex; align-items: center; gap: 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
         .pref-item:hover { border-color: #58a6ff; }
         .pref-item input { accent-color: #58a6ff; }
@@ -519,7 +520,19 @@
                 </div>
                 <div class="pref-group">
                     <h3 style="display:flex;align-items:center;justify-content:space-between;">Activos (pares) <button class="btn-toggle-all" onclick="toggleAllActivos()" id="btn-toggle-activos">Marcar todos</button></h3>
+                    <div class="pref-grupos">
+                        <label class="pref-item"><input type="checkbox" id="grupo-cripto" onchange="toggleGrupo('cripto')"> 🪙 Cripto</label>
+                        <label class="pref-item"><input type="checkbox" id="grupo-etf" onchange="toggleGrupo('etf')"> 📊 ETF</label>
+                        <label class="pref-item"><input type="checkbox" id="grupo-acciones" onchange="toggleGrupo('acciones')"> 🏢 Acciones</label>
+                    </div>
                     <div class="pref-grid" id="pref-activos"></div>
+                </div>
+                <div class="pref-group" style="margin-top:14px;">
+                    <h3>🕒 Horario de notificaciones</h3>
+                    <select id="pref-horario" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;">
+                        <option value="todo">Todo el día</option>
+                        <option value="8-17">Solo 8:00 – 17:00</option>
+                    </select>
                 </div>
             </div>
             <div class="pref-group" style="margin-top:18px;">
@@ -574,6 +587,7 @@
         let loadingCount = 0;
         let ultimoSaldoMeta = null;
         let pushEs = null;
+        let notifPrefs = null;
 
         function startLoading() {
             loadingCount++;
@@ -725,6 +739,7 @@
                 document.querySelector('.container').style.display = '';
                 loadFilters();
                 updateModoLabel();
+                cargarNotifPrefs();
                 loadData();
                 loadSaldos();
                 checkNotifyStatus();
@@ -759,13 +774,39 @@
             pushEs.onerror = function() {};
         }
 
+        function filtrarSenal(d) {
+            if (!notifPrefs) return true;
+            const estPref = notifPrefs.estrategias || [];
+            const simPref = notifPrefs.simbolos || [];
+            if (estPref.length === 0 && simPref.length === 0) {
+                return horarioPushPermitido();
+            }
+            const coincideEst = estPref.length === 0 || estPref.includes(d.estrategia);
+            const coincideSim = simPref.length === 0 || simPref.includes(d.simbolo);
+            return coincideEst && coincideSim && horarioPushPermitido();
+        }
+
+        function horarioPushPermitido() {
+            if (!notifPrefs || notifPrefs.horario !== '8-17') return true;
+            const h = new Date().getHours();
+            return h >= 8 && h <= 17;
+        }
+
+        async function cargarNotifPrefs() {
+            try {
+                const resp = await fetch('/api/preferencias');
+                if (resp.ok) notifPrefs = await resp.json();
+            } catch(e) {}
+        }
+
         function manejarSenal(e) {
             try {
                 const d = JSON.parse(e.data);
-                mostrarPush(d);
                 loadData();
                 loadOpenTrades();
                 loadSaldos();
+                if (!filtrarSenal(d)) return;
+                mostrarPush(d);
                 if (window.isSecureContext && 'Notification' in window && Notification.permission === 'granted') {
                     const icono = d.tipo === 'apertura' ? '📈' : '🏁';
                     const color = d.tipo === 'apertura' ? '#3fb950' : '#f85149';
@@ -879,10 +920,13 @@
                 const contAct = document.getElementById('pref-activos');
                 contAct.innerHTML = '';
                 opciones.activos.forEach(a => {
-                    contAct.innerHTML += `<label class="pref-item"><input type="checkbox" value="${a}" ${selAct.has(a) ? 'checked' : ''}> ${a}</label>`;
+                    contAct.innerHTML += `<label class="pref-item" data-grupo="${commonGrupo(a, opciones.grupos)}"><input type="checkbox" value="${a}" ${selAct.has(a) ? 'checked' : ''}> ${a}</label>`;
                 });
                 const allActChecked = opciones.activos.length > 0 && opciones.activos.every(a => selAct.has(a));
                 document.getElementById('btn-toggle-activos').textContent = allActChecked ? 'Desmarcar todos' : 'Marcar todos';
+                actualizarChecksGrupos(opciones);
+
+                document.getElementById('pref-horario').value = prefs.horario === '8-17' ? '8-17' : 'todo';
 
                 const metaPct = prefs.meta_pct != null ? prefs.meta_pct : 5;
                 document.getElementById('pref-meta-pct').value = metaPct;
@@ -914,15 +958,17 @@
             const estrategias = Array.from(document.querySelectorAll('#pref-estrategias input:checked')).map(i => i.value);
             const simbolos = Array.from(document.querySelectorAll('#pref-activos input:checked')).map(i => i.value);
             const metaPct = parseFloat(document.getElementById('pref-meta-pct').value) || 5;
+            const horario = document.getElementById('pref-horario').value;
             try {
                 const resp = await fetch('/api/preferencias', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ estrategias, simbolos, meta_pct: metaPct })
+                    body: JSON.stringify({ estrategias, simbolos, meta_pct: metaPct, horario })
                 });
                 const saved = document.getElementById('config-saved');
                 if (resp.ok) {
                     saved.textContent = '✅ Preferencias guardadas';
+                    cargarNotifPrefs();
                     setTimeout(() => { saved.textContent = ''; }, 2500);
                 } else {
                     saved.textContent = '❌ Error al guardar';
@@ -939,6 +985,39 @@
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             checkboxes.forEach(cb => cb.checked = !allChecked);
             document.getElementById('btn-toggle-activos').textContent = allChecked ? 'Marcar todos' : 'Desmarcar todos';
+            actualizarChecksGrupos(ultimasOpciones);
+        }
+
+        let ultimasOpciones = null;
+
+        function commonGrupo(simbolo, grupos) {
+            if (!grupos) return 'acciones';
+            if ((grupos.cripto || []).includes(simbolo)) return 'cripto';
+            if ((grupos.etf || []).includes(simbolo)) return 'etf';
+            if ((grupos.acciones || []).includes(simbolo)) return 'acciones';
+            return 'cripto';
+        }
+
+        function actualizarChecksGrupos(opciones) {
+            ultimasOpciones = opciones;
+            if (!opciones || !opciones.grupos) return;
+            ['cripto', 'etf', 'acciones'].forEach(g => {
+                const simbolos = opciones.grupos[g] || [];
+                const cbs = Array.from(document.querySelectorAll(`#pref-activos input[type="checkbox"]`))
+                    .filter(cb => simbolos.includes(cb.value));
+                const check = document.getElementById('grupo-' + g);
+                if (check) check.checked = cbs.length > 0 && cbs.every(cb => cb.checked);
+            });
+        }
+
+        function toggleGrupo(grupo) {
+            const simbolos = (ultimasOpciones?.grupos || {})[grupo] || [];
+            const cbs = Array.from(document.querySelectorAll('#pref-activos input[type="checkbox"]'))
+                .filter(cb => simbolos.includes(cb.value));
+            const check = document.getElementById('grupo-' + grupo);
+            const activar = !check.checked;
+            cbs.forEach(cb => cb.checked = activar);
+            actualizarChecksGrupos(ultimasOpciones);
         }
 
         async function loadFilters() {

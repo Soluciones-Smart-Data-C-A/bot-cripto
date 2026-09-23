@@ -79,8 +79,30 @@ def tabla_estrategia(estrategia):
 ACCIONES_ETF = {'IWM', 'SMH', 'VT', 'VALE', 'PYPL', 'INTC',
                 'NKE', 'GOOGL', 'CRWV', 'CCJ', 'COST', 'AAPL', 'V', 'BE', 'MRVL', 'COIN', 'META', 'RTX', 'CVX'}
 
+ETFS = {'IWM', 'SMH', 'VT'}
+
 def es_accion_o_etf(simbolo):
     return simbolo in ACCIONES_ETF
+
+def grupo_de_simbolo(simbolo):
+    """Clasifica un símbolo en: 'cripto', 'etf' o 'acciones'."""
+    if not simbolo:
+        return 'acciones'
+    if simbolo in ETFS:
+        return 'etf'
+    if simbolo in ACCIONES_ETF:
+        return 'acciones'
+    return 'cripto'
+
+def simbolos_por_grupo(grupo):
+    """Devuelve los símbolos de ACTIVOS pertenecientes a un grupo ('cripto'|'etf'|'acciones')."""
+    return [s for s in ACTIVOS if grupo_de_simbolo(s) == grupo]
+
+GRUPOS_ACTIVOS = {
+    'cripto': simbolos_por_grupo('cripto'),
+    'etf': simbolos_por_grupo('etf'),
+    'acciones': simbolos_por_grupo('acciones'),
+}
 
 def horario_mercado():
     """Retorna True si el mercado de acciones US está abierto (9:30 AM - 4:00 PM ET)."""
@@ -208,6 +230,7 @@ def inicializar_db():
                 first_name VARCHAR(100),
                 photo_url VARCHAR(500),
                 meta_pct FLOAT DEFAULT 5.0,
+                notif_horario VARCHAR(10) DEFAULT 'todo',
                 fecha_alta DATETIME DEFAULT NOW()
             )
         """)
@@ -236,6 +259,11 @@ def inicializar_db():
 
         try:
             cursor.execute("ALTER TABLE usuarios ADD COLUMN meta_pct FLOAT DEFAULT 5.0")
+        except Error:
+            pass  # La columna ya existe
+
+        try:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN notif_horario VARCHAR(10) DEFAULT 'todo'")
         except Error:
             pass  # La columna ya existe
 
@@ -666,6 +694,53 @@ def guardar_meta_pct(chat_id, pct):
     finally:
         conn.close()
 
+def obtener_notif_horario(chat_id):
+    """Horario de notificaciones del usuario: 'todo' o '8-17' (default 'todo')."""
+    conn = get_db_connection()
+    if not conn:
+        return 'todo'
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT notif_horario FROM usuarios WHERE chat_id = %s", (str(chat_id),))
+        r = cursor.fetchone()
+        return r[0] if r and r[0] in ('todo', '8-17') else 'todo'
+    except Error as e:
+        print(f"❌ Error obteniendo notif_horario: {e}")
+        return 'todo'
+    finally:
+        conn.close()
+
+def guardar_notif_horario(chat_id, horario):
+    """Guarda el horario de notificaciones del usuario ('todo' o '8-17')."""
+    if horario not in ('todo', '8-17'):
+        return False
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO usuarios (chat_id, notif_horario)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE notif_horario = VALUES(notif_horario)
+        """, (str(chat_id), horario))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"❌ Error guardando notif_horario: {e}")
+        return False
+    finally:
+        conn.close()
+
+def horario_notificaciones_permitido(chat_id):
+    """Devuelve True si el usuario puede recibir notificaciones según su horario
+    (hora local del contenedor). 'todo' => siempre; '8-17' => 8:00 <= hora <= 17:00."""
+    horario = obtener_notif_horario(chat_id)
+    if horario != '8-17':
+        return True
+    hora = datetime.now().hour
+    return 8 <= hora <= 17
+
 def calcular_meta_diaria(balance, pct=5.0):
     """Calcula meta diaria (% configurable) y montos por trade (30% WR, ratio 1:3).
     Todo se escala proporcionalmente al %: si subes el %, también sube el
@@ -853,6 +928,8 @@ def enviar_telegram(estrategia, simbolo, mensaje, posicion=None):
     conn = get_db_connection()
     for chat_id in ids:
         if not usuario_quiere_notificacion(chat_id, estrategia, simbolo):
+            continue
+        if not horario_notificaciones_permitido(chat_id):
             continue
         texto = mensaje
         if posicion:
