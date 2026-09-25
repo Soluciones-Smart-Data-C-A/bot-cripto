@@ -8,6 +8,9 @@ Lógica Exacta del Video:
 3. Desplazamiento & Market Structure Shift (MSS): Creación del 1er Fair Value Gap (FVG) en velas de 1m.
 4. Entrada en Retest: Orden cuando el precio regresa/retestea la zona del FVG.
 5. Objetivos: SL en el extremo del barrido, TP en el extremo opuesto del Rango Asiático (ratio mín 1:2).
+
+ESTADO: DETENIDA (2026-09-25) por bajo acierto (13%). No figura en el CMD del Dockerfile.
+Para reactivar: volver a agregar `python estrategia_insta_sweep.py &` en el CMD.
 """
 
 import sys

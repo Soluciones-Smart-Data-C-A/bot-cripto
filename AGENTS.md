@@ -32,9 +32,10 @@ Nuevo archivo: agregarlo al `COPY` y al `CMD` del `Dockerfile`, con el guard fin
 - Abrir/cerrar con `common.registrar_apertura` / `common.registrar_cierre`.
 - **Una operación por símbolo**: chequea `common.obtener_trades_abiertos(estrategia, simbolo)` antes de abrir.
 - Saltar acciones/ETF con mercado cerrado: `es_accion_o_etf(...)` + `horario_mercado()`.
-- Notificar con `common.enviar_telegram(...)`.
+- Notificar con `common.enviar_telegram(...)`; el cuerpo SIEMPRE sale de `common.mensaje_senal()` (apertura) / `common.mensaje_cierre()` (cierre) + `extra=[...]` para líneas propias — no escribir f-strings de mensajes (estilo unificado 2026-09).
 
 ## Gotchas
+- **`INSTA_SWEEP_V1` está DETENIDA** (2026-09-25, 13% acierto): `estrategia_insta_sweep.py` tiene `COPY` pero NO está en el `CMD` del Dockerfile. Para reactivar: agregar `python estrategia_insta_sweep.py &` al CMD. Sus trades abiertos los cierra el watchdog del dashboard.
 - `horario_mercado()` hardcodea EDT −4h (`common.py:110`): se desfasa 1h cuando US NO está en DST (nov–mar).
 - `inicializar_db()` hace `DROP TABLE IF EXISTS historial_mora_cross / historial_mora_ny` en cada boot (`common.py:156-157`): no reintroducir esos nombres.
 - Resultados de cierre se cuentan por substring (`LIKE '%TP%'`/`'%SL%'`, `dashboard.py:290`, `reportes.py:133`): mantener las subcadenas `TP`/`SL` en cualquier resultado nuevo (p.ej. `TP_MANUAL`, `SL_MANUAL`, `TP: ALTO DEL RANGO ✅`).

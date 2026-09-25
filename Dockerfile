@@ -41,4 +41,6 @@ COPY templates/ ./templates/
 EXPOSE 5000
 
 # Ejecutar
-CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py & python bot_telegram_listener.py & python estrategia_insta_sweep.py & python estrategia_sanchezzfx.py & python dashboard.py
+# NOTA: estrategia_insta_sweep.py NO se ejecuta (detenida 2026-09-25, 13% de acierto);
+# seguirá disponible para reactivarse quitando este comentario del CMD.
+CMD python estrategia_crt_v2.py & python bot_mora_trader.py & python estrategia_ema_cross.py & python estrategia_smc.py & python bot_telegram_listener.py & python estrategia_sanchezzfx.py & python dashboard.py
