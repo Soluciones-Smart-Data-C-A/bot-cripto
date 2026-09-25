@@ -1015,7 +1015,7 @@
             const cbs = Array.from(document.querySelectorAll('#pref-activos input[type="checkbox"]'))
                 .filter(cb => simbolos.includes(cb.value));
             const check = document.getElementById('grupo-' + grupo);
-            const activar = !check.checked;
+            const activar = check.checked;
             cbs.forEach(cb => cb.checked = activar);
             actualizarChecksGrupos(ultimasOpciones);
         }
