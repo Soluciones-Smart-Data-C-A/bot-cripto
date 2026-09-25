@@ -79,10 +79,8 @@ def analizar_apertura_ny(simbolo):
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'SHORT', 'entrada': precio_actual, 'id': id_op}
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
-                        f"Dirección: SHORT\n"
-                        f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación superior.",
+                        common.mensaje_senal(ESTRATEGIA, simbolo, 'SHORT', precio_actual, sl, tp, id_op,
+                            extra=['Motivo: Recuperación tras manipulación superior.']),
                         posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
             if precio_actual < rango['bajo']:
@@ -100,10 +98,8 @@ def analizar_apertura_ny(simbolo):
                                                       rango_alto=rango['alto'], rango_bajo=rango['bajo'])
                     operaciones_activas[simbolo] = {'tipo': 'LONG', 'entrada': precio_actual, 'id': id_op}
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🎯 *SEÑAL NY_OPEN ({simbolo})*\n"
-                        f"Dirección: LONG\n"
-                        f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\nID: {id_op}\n"
-                        f"Motivo: Recuperación tras manipulación inferior.",
+                        common.mensaje_senal(ESTRATEGIA, simbolo, 'LONG', precio_actual, sl, tp, id_op,
+                            extra=['Motivo: Recuperación tras manipulación inferior.']),
                         posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         if simbolo in operaciones_activas:
@@ -131,8 +127,7 @@ def analizar_apertura_ny(simbolo):
             if cerrar:
                 if common.registrar_cierre(op['id'], p_actual, res):
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🏁 *CIERRE NY OPEN ({simbolo})*\nMotivo: {res}\nPrecio: {p_actual:.5f}\n"
-                        f"ID: {op['id']}")
+                        common.mensaje_cierre(ESTRATEGIA, simbolo, res, p_actual, op['id']))
                 del operaciones_activas[simbolo]
                 del rangos_dia[simbolo]
 

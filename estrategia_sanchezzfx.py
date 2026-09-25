@@ -254,13 +254,8 @@ def chequear_entradas():
 
                     common.enviar_telegram(
                         ESTRATEGIA, activo,
-                        f"⚡ *SEÑAL SWEEP + ENVOLVENTE ({activo})*\n"
-                        f"Estrategia: SanchezZFX\n"
-                        f"Dirección: *{tipo}*\n"
-                        f"Entrada: `{p_entrada:.5f}`\n"
-                        f"SL (Extremo Barrido): `{sl:.5f}`\n"
-                        f"TP (Ratio 1:{RATIO_RISK_REWARD:.1f}): `{tp:.5f}`\n"
-                        f"ID Trade: `{nueva_op['id']}`",
+                        common.mensaje_senal(ESTRATEGIA, activo, tipo, p_entrada, sl, tp, nueva_op['id'],
+                            extra=[f"Ratio R:R 1:{RATIO_RISK_REWARD:.1f}"]),
                         posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp}
                     )
 
@@ -291,10 +286,7 @@ def gestionar_operaciones():
                 if common.registrar_cierre(op['id'], p_actual, msg):
                     common.enviar_telegram(
                         ESTRATEGIA, op['simbolo'],
-                        f"🏁 *CIERRE SWEEP ({op['simbolo']})*\n"
-                        f"Motivo: {msg}\n"
-                        f"Precio Salida: `{p_actual:.5f}`\n"
-                        f"ID: `{op['id']}`"
+                        common.mensaje_cierre(ESTRATEGIA, op['simbolo'], msg, p_actual, op['id'])
                     )
 
                 if 'SL' in msg:

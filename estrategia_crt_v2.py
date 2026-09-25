@@ -167,10 +167,7 @@ def chequear_activo(activo):
                                                        rango_alto=bot.rango_alto, rango_bajo=bot.rango_bajo)
             operaciones_activas.append(nueva_op)
             common.enviar_telegram(ESTRATEGIA, activo,
-                f"🎯 *SEÑAL CRT_V7 ({activo})*\n"
-                f"Dirección: {signal}\n"
-                f"Entrada: {p_entrada:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
-                f"ID: {nueva_op['id']}",
+                common.mensaje_senal(ESTRATEGIA, activo, signal, p_entrada, sl, tp, nueva_op['id']),
                 posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp})
 
 def gestionar_operaciones():
@@ -198,8 +195,7 @@ def gestionar_operaciones():
             if cerrar:
                 if common.registrar_cierre(op['id'], p_actual, msg):
                     common.enviar_telegram(ESTRATEGIA, op['simbolo'],
-                        f"🏁 *CIERRE CRT ({op['simbolo']})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
-                        f"ID: {op['id']}")
+                        common.mensaje_cierre(ESTRATEGIA, op['simbolo'], msg, p_actual, op['id']))
                 if 'SL' in msg:
                     rango_a = op.get('rango_alto')
                     rango_b = op.get('rango_bajo')

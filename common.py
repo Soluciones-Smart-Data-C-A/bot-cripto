@@ -912,6 +912,32 @@ def icono_cierre(resultado):
         return '❌'
     return ''
 
+def mensaje_senal(estrategia, simbolo, tipo, entrada, sl, tp, id_op, extra=None):
+    """Mensaje estándar de apertura. extra: lista opcional de líneas adicionales."""
+    lineas = [
+        f"🎯 *SEÑAL {estrategia} ({simbolo})*",
+        f"Dirección: {tipo}",
+        f"Entrada: {entrada:.5f}",
+        f"TP: {tp:.5f}",
+        f"SL: {sl:.5f}",
+        f"ID: {id_op}",
+    ]
+    if extra:
+        lineas.extend(extra)
+    return "\n".join(lineas)
+
+def mensaje_cierre(estrategia, simbolo, resultado, precio, id_op, extra=None):
+    """Mensaje estándar de cierre. extra: lista opcional de líneas adicionales."""
+    lineas = [
+        f"🏁 *CIERRE {estrategia} ({simbolo})*",
+        f"Motivo: {resultado}",
+        f"Precio: {precio:.5f}",
+        f"ID: {id_op}",
+    ]
+    if extra:
+        lineas.extend(extra)
+    return "\n".join(lineas)
+
 def enviar_telegram(estrategia, simbolo, mensaje, posicion=None):
     # Verificar si las notificaciones están desactivadas
     notify_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.notifications_off')

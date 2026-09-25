@@ -72,11 +72,8 @@ def analizar_estrategia(simbolo):
                     'fecha_apertura': datetime.now()
                 }
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🎯 *SEÑAL MORA_EMA_CROSS ({simbolo})*\n"
-                    f"Dirección: LONG\n"
-                    f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
-                    f"ID: {id_op}\n"
-                    f"Motivo: Cruce alcista EMA 9/21",
+                    common.mensaje_senal(ESTRATEGIA, simbolo, 'LONG', precio_actual, sl, tp, id_op,
+                        extra=['Motivo: Cruce alcista EMA 9/21']),
                     posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         # 2. Entrada en VENTA
@@ -92,11 +89,8 @@ def analizar_estrategia(simbolo):
                     'fecha_apertura': datetime.now()
                 }
                 common.enviar_telegram(ESTRATEGIA, simbolo,
-                    f"🎯 *SEÑAL MORA_EMA_CROSS ({simbolo})*\n"
-                    f"Dirección: SHORT\n"
-                    f"Entrada: {precio_actual:.5f}\nTP: {tp:.5f}\nSL: {sl:.5f}\n"
-                    f"ID: {id_op}\n"
-                    f"Motivo: Cruce bajista EMA 9/21",
+                    common.mensaje_senal(ESTRATEGIA, simbolo, 'SHORT', precio_actual, sl, tp, id_op,
+                        extra=['Motivo: Cruce bajista EMA 9/21']),
                     posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp})
 
         # 3. Cierre de operaciones
@@ -133,8 +127,7 @@ def analizar_estrategia(simbolo):
             if cierre:
                 if common.registrar_cierre(op['id'], precio_actual, res):
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🏁 *CIERRE MORA ({simbolo})*\nMotivo: {res}\nPrecio: {precio_actual:.5f}\n"
-                        f"ID: {op['id']}")
+                        common.mensaje_cierre(ESTRATEGIA, simbolo, res, precio_actual, op['id']))
                 del operaciones_activas[simbolo]
 
     except Exception as e:

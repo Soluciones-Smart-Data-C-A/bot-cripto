@@ -262,14 +262,8 @@ def chequear_entradas():
             common.enviar_telegram(
                 ESTRATEGIA,
                 activo,
-                f"🎯 *SEÑAL ICT SWEEP + 1m FVG RETEST ({activo})*\n"
-                f"Estrategia Reel Instagram (Asia 7PM + FVG Retest)\n"
-                f"Dirección: {signal}\n"
-                f"Entrada (FVG Retest): {p_entrada:.5f}\n"
-                f"TP (Asian Target): {tp:.5f}\n"
-                f"SL (Sweep Low/High): {sl:.5f}\n"
-                f"Rango Asia (7PM): {bot.asian_low:.5f} - {bot.asian_high:.5f}\n"
-                f"ID Trade: {id_trade}",
+                common.mensaje_senal(ESTRATEGIA, activo, signal, p_entrada, sl, tp, id_trade,
+                    extra=[f"Rango Asia (7PM): {bot.asian_low:.5f} - {bot.asian_high:.5f}"]),
                 posicion={'entrada': p_entrada, 'sl': sl, 'tp': tp}
             )
 
@@ -300,15 +294,11 @@ def gestionar_operaciones():
 
             if cerrar:
                 if common.registrar_cierre(op['id'], p_actual, msg):
-                    icono = common.icono_cierre(msg)
                     common.enviar_telegram(
                         ESTRATEGIA,
                         op['simbolo'],
-                        f"🏁 *CIERRE SWEEP FVG ({op['simbolo']})*\n"
-                        f"Resultado: {msg} {icono}\n"
-                        f"Precio Entrada: {op['entrada']:.5f}\n"
-                        f"Precio Salida: {p_actual:.5f}\n"
-                        f"ID Trade: {op['id']}"
+                        common.mensaje_cierre(ESTRATEGIA, op['simbolo'], msg, p_actual, op['id'],
+                            extra=[f"Entrada: {op['entrada']:.5f}"])
                     )
                 operaciones_activas.remove(op)
 

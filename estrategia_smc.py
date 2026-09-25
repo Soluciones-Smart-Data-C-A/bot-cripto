@@ -167,13 +167,8 @@ def analizar_smc(simbolo):
                                          'sl': sl, 'tp': tp_final, 'id': id_op}
 
         common.enviar_telegram(ESTRATEGIA, simbolo,
-            f"🎯 *SEÑAL SMC_FVG_BOS ({simbolo})*\n"
-            f"Dirección: {tipo}\n"
-            f"Entrada: {precio_actual:.5f}\n"
-            f"SL: {sl:.5f}\n"
-            f"TP (1:3): {tp_1_3:.5f}\n"
-            f"TP Final: {tp_final:.5f}\n"
-            f"ID: {id_op}",
+            common.mensaje_senal(ESTRATEGIA, simbolo, tipo, precio_actual, sl, tp_final, id_op,
+                extra=[f"TP Intermedio (1:3): {tp_1_3:.5f}"]),
             posicion={'entrada': precio_actual, 'sl': sl, 'tp': tp_final})
 
     except Exception as e:
@@ -216,8 +211,7 @@ def gestionar_operaciones():
             if cerrar:
                 if common.registrar_cierre(op['id'], p_actual, msg):
                     common.enviar_telegram(ESTRATEGIA, simbolo,
-                        f"🏁 *CIERRE SMC ({simbolo})*\nMotivo: {msg}\nPrecio: {p_actual:.5f}\n"
-                        f"ID: {op['id']}")
+                        common.mensaje_cierre(ESTRATEGIA, simbolo, msg, p_actual, op['id']))
                 del operaciones_activas[simbolo]
 
         except Exception as e:
